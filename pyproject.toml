@@ -26,5 +26,5 @@ testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "tests", "demo.py", "evals.py"]
+files = ["catalejo", "tests", "demo.py", "evals.py"]
 strict = true
