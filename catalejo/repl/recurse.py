@@ -29,22 +29,26 @@ en adelante lo lleva el álgebra, que ya sumaba `spent` hacia arriba.
 # Cuántos hilos
 
 Un `rlm()` en vuelo bloquea el hilo del `exec` que lo llamó hasta que vuelve, así
-que los hilos ocupados son como mucho `paralelo` elevado a `depth`. Con los
-valores de fábrica son ocho y el pool de `asyncio.to_thread` aguanta. Subir los
-dos a la vez no: `paralelo=20` con `depth=2` pide cuatrocientos hilos y el pool se
-traba esperándose a sí mismo. Es otra cosa que arregla el contenedor, donde cada
-sandbox es un proceso y no un hilo.
+que los niveles se suman: el árbol pide `1 + paralelo + paralelo**2 + ...` hilos
+al pool de `asyncio.to_thread`, que tiene `min(32, cpus + 4)`. Pasado ese techo
+los hilos se esperan a sí mismos y el proceso queda colgado, sin error y sin
+timeout. Por eso `paralelo` sin decir nada es el que entra en ESTA máquina, y uno
+pedido a mano que no entre levanta `ValueError` al cablear en vez de colgarse a la
+hora de correr. Es otra cosa que arregla el contenedor, donde cada sandbox es un
+proceso y no un hilo.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable, Sequence
 
 from catalejo.core import Conversation, Log, Message, Role, loop, then
 from catalejo.llm import Model, Reply
 
 from .executor import executor, extract_code
+from .grounding import grounded
 from .handle import Handle
 from .worker import worker
 from .workspace import Bridge, Workspace
@@ -53,6 +57,35 @@ DEPTH = 1
 MAX_STEPS = 6
 PARALELO = 8
 BUDGET = 50_000
+
+
+def _hilos_del_pool() -> int:
+    """Cuántos hilos da el executor por defecto, que es de donde saca los suyos
+    `asyncio.to_thread`.
+
+    Es la fórmula de `ThreadPoolExecutor`, no un número nuestro: si la máquina
+    tiene dos cores, son seis hilos y no treinta y dos.
+    """
+    return min(32, (os.cpu_count() or 1) + 4)
+
+
+def _hilos_que_pide(depth: int, paralelo: int) -> int:
+    """Cuántos hilos puede tener bloqueados el árbol a la vez.
+
+    Uno por el `exec` de la raíz, más `paralelo` hijos en vuelo, y cada uno de
+    esos con sus propios `paralelo` nietos. Un `rlm()` en vuelo deja bloqueado el
+    hilo del `exec` que lo llamó, así que los niveles se SUMAN en vez de turnarse.
+    """
+    return sum(paralelo**n for n in range(depth + 1))
+
+
+def _paralelo_que_entra(depth: int, hilos: int) -> int:
+    """El `paralelo` más grande que no traba el pool, hasta PARALELO."""
+    p = PARALELO
+    while p > 1 and _hilos_que_pide(depth, p) > hilos:
+        p -= 1
+    return p
+
 
 # El sub-agente lee texto que salió del contexto, o sea texto no confiable. El
 # guardrail va también acá, porque su respuesta vuelve al padre como un dato más.
@@ -164,7 +197,7 @@ def recurse(
     depth: int = DEPTH,
     budget: int = BUDGET,
     max_steps: int = MAX_STEPS,
-    paralelo: int = PARALELO,
+    paralelo: int | None = None,
 ) -> Workspace:
     """Un `Workspace` que además sabe delegar en otro modelo.
 
@@ -177,7 +210,25 @@ def recurse(
     que tiene. Es un tope aparte del `budget` del loop, porque una sola corrida
     del REPL puede abrir cincuenta llamadas y el loop recién mira al terminar el
     paso, cuando ya se gastaron.
+
+    `paralelo` sin decir nada es el más grande que entra en el pool de hilos de
+    esta máquina. Uno pedido a mano que no entre no arranca, y eso es a propósito:
+    el árbol pide `1 + paralelo + paralelo**2 + ...` hilos bloqueados y el pool de
+    `asyncio.to_thread` tiene `min(32, cpus + 4)`. Pasado ese techo los hilos se
+    esperan a sí mismos y el proceso queda colgado sin error y sin timeout, que es
+    la peor forma de fallar que tiene este repo. Un `ValueError` al cablear se lee.
     """
+    hilos = _hilos_del_pool()
+    if paralelo is None:
+        paralelo = _paralelo_que_entra(depth, hilos)
+    pide = _hilos_que_pide(depth, paralelo)
+    if pide > hilos:
+        raise ValueError(
+            f"paralelo={paralelo} con depth={depth} pide hasta {pide} hilos bloqueados y "
+            f"el pool de asyncio da {hilos}: el árbol se traba esperándose a sí mismo. "
+            f"Con este depth entra paralelo={_paralelo_que_entra(depth, hilos)}, o bajá "
+            f"depth."
+        )
     bridge = Bridge(budget=budget)
     return _armar(
         payload,
@@ -236,8 +287,14 @@ def _builtins(
             texto, model, bridge, var="ctx", depth=depth - 1, max_steps=max_steps, paralelo=paralelo
         )
         handle = Handle(var=hijo.var, size=f"{len(texto):,} caracteres", tools=hijo.tools)
+        # El mismo cableado que la raíz, `grounded` incluido. Contestar de
+        # memoria no es menos probable acá adentro: es más, porque el hijo tiene
+        # menos pasos y nadie lee su transcripción. Sin esto, un barrido de
+        # ochenta llamadas tiene ochenta lugares donde inventar sin que el padre
+        # se entere.
         agente = loop(
-            then(worker(model, handle, keep_recent=6), executor(hijo)), max_steps=max_steps
+            then(worker(model, handle, keep_recent=6), executor(hijo), grounded(hijo.var)),
+            max_steps=max_steps,
         )
         return answer(await agente(Log(said=(Message(Role.USER, pregunta),))))
 
