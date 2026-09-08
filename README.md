@@ -259,6 +259,16 @@ es la que sabe.
 Un bloque cercado sin cerrar no corre nunca. Si corriera, una respuesta cortada a la mitad rompería
 el contrato de "prosa quiere decir terminé".
 
+Y corre solo lo que dijo el modelo, así que mira el rol antes que el texto. Cuando el worker se cae
+no agrega nada y el último dicho pasa a ser la salida anterior del REPL, que es texto que salió del
+contexto: si ahí adentro viene un bloque cercado, mirar el último dicho sin mirar quién lo dijo es
+ejecutar el corpus. Sin propuesta el executor no opina, el voto queda en QUIET y el turno corta con
+el `Fail` del modelo a la vista.
+
+De un mensaje con dos bloques corre el primero y lo dice. Tragarse el segundo es el mismo defecto que
+el `grep` que recortaba en silencio: el modelo pidió dos cosas, ve una salida y no tiene cómo saber
+que la otra nunca pasó.
+
 Un snippet que revienta no es un `Fail`. Es flujo normal del REPL: el modelo ve el error en la
 salida y lo corrige en el bloque siguiente. `fails` es para cuando se rompe la maquinaria, o sea
 cuando el Environment mismo no responde, y ahí el voto queda en QUIET para que el loop corte en vez
@@ -318,10 +328,13 @@ aparte, así que ahí adentro no se puede hacer `await` de nada. `Bridge` es el 
 `run_coroutine_threadsafe` bloquea SOLO a ese hilo mientras el event loop sigue atendiendo a todos
 los demás. El `Workspace` le deja el loop antes de cruzar, porque el hilo no lo alcanza solo.
 
-Un `rlm()` en vuelo tiene un hilo bloqueado, así que los hilos ocupados son como mucho `paralelo`
-elevado a `depth`. Con los valores de fábrica son ocho y el pool aguanta. Subir los dos a la vez no:
-`paralelo=20` con `depth=2` pide cuatrocientos hilos y el pool se traba esperándose a sí mismo. Es
-otra cosa que arregla el contenedor, donde cada sandbox es un proceso y no un hilo.
+Un `rlm()` en vuelo tiene un hilo bloqueado, así que los niveles se suman: el árbol pide
+`1 + paralelo + paralelo**2 + ...` hilos al pool de `asyncio.to_thread`, que tiene `min(32, cpus + 4)`.
+Pasado ese techo los hilos se esperan a sí mismos y el proceso queda colgado, sin error y sin timeout,
+que es la peor forma de fallar que hay acá adentro. Por eso `paralelo` sin decir nada es el que entra
+en la máquina donde corre, y uno pedido a mano que no entre levanta `ValueError` al cablear: un
+`paralelo=20` con `depth=2` pide ocho mil hilos y eso se sabe antes de arrancar, no a la hora de
+colgarse. Es otra cosa que arregla el contenedor, donde cada sandbox es un proceso y no un hilo.
 
 #### La plata
 
@@ -412,6 +425,10 @@ que otra dijo, así que el DONE del executor no se cancela. Y no hace falta: `vo
 máximo y CONTINUE es mayor que DONE, así que alcanza con opinar más fuerte. Para eso estaba el orden
 de `Status` desde el principio, y esta es la primera célula que lo usa de verdad. Un veto sin
 mecanismo de veto, que sale del álgebra sola.
+
+El sub-agente lleva el mismo cableado. Un barrido de ochenta llamadas son ochenta lugares donde
+contestar de memoria, con menos pasos y sin nadie que lea la transcripción, y lo que vuelve es prosa
+que el padre no distingue de la buena.
 
 Avisa una vez. Si el modelo vuelve a contestar de memoria después del aviso, lo deja terminar y
 anota el `Fail`: la respuesta sale, pero sale etiquetada. Insistir hasta el tope de pasos serían doce

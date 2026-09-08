@@ -95,6 +95,32 @@ class TestVentanaDeSoloLectura:
         assert "`re` no está disponible" in out.err
         assert "grep(texto, patron)" in out.err
 
+    async def test_se_puede_definir_una_clase(self) -> None:
+        """`NameError: __build_class__ not found` es el mismo error que no enseña
+        nada del import. Una clase no alcanza nada que el modelo no alcanzara ya:
+        la ventana la define qué builtins hay."""
+        ws = Workspace()
+
+        out = await ws.run(
+            "class Nota:\n"
+            "    def __init__(self, t):\n"
+            "        self.t = t\n"
+            "print(Nota('hola').t)"
+        )
+
+        assert out.err == ""
+        assert out.stdout == "hola\n"
+
+    async def test_las_excepciones_de_todos_los_dias_se_atrapan(self) -> None:
+        """Un nombre que falta no desactiva el except: lo convierte en un
+        NameError que tapa el error de verdad con uno que no tiene que ver."""
+        ws = Workspace()
+
+        out = await ws.run("try:\n    1 / 0\nexcept ZeroDivisionError:\n    print('atrapado')")
+
+        assert out.err == ""
+        assert out.stdout == "atrapado\n"
+
     async def test_no_hay_open(self) -> None:
         ws = Workspace()
 

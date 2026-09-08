@@ -241,6 +241,37 @@ class TestRlm:
         assert out.spent == 3 * COSTO
 
 
+class TestElHijoTambienTieneQueMirar:
+    async def test_no_deja_pasar_una_respuesta_de_memoria(self) -> None:
+        """El incidente de v1 adentro de un rlm(). Un barrido de ochenta llamadas
+        son ochenta lugares donde inventar, y el padre recibe prosa que no
+        distingue de la buena."""
+        model = Router(
+            ("de qué habla", "de tostadoras"),  # contesta sin mirar nada
+            ("[grounding]", bloque("print(ctx[:20])")),  # el aviso lo manda a mirar
+            ("[repl]", "habla de la garantía"),
+        )
+        ws = recurse("la garantía cubre 12 meses", model)
+
+        out = await ws.run("print(rlm('de qué habla', ctx))")
+
+        assert out.stdout == "habla de la garantía\n"
+        assert "de tostadoras" not in out.stdout
+
+
+class TestLosHilos:
+    def test_una_config_que_traba_el_pool_no_arranca(self) -> None:
+        """El árbol pide un hilo bloqueado por llamada en vuelo y por nivel. Sin
+        esto se cuelga sin error y sin timeout, que es la peor forma de fallar."""
+        with pytest.raises(ValueError, match="hilos bloqueados"):
+            recurse("", Router(), depth=3, paralelo=20)
+
+    def test_el_default_se_acomoda_a_la_maquina(self) -> None:
+        """Sin decir nada entra siempre: el techo no depende de cuántos cores
+        tenga la máquina donde corra."""
+        recurse("", Router(), depth=2)
+
+
 class TestNadaSeCuentaDosVeces:
     async def test_el_total_es_exactamente_lo_que_se_llamo(self) -> None:
         """La trampa del diseño: el hijo mide su propio gasto Y el padre mide la
