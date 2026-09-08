@@ -1,5 +1,5 @@
 from .environment import Environment, Output, Stub
-from .executor import executor, extract_code, render
+from .executor import executor, extract_code, otro_bloque, render
 from .grounding import grounded
 from .handle import Handle, render_handle
 from .recurse import Metered, answer, note, recurse
@@ -21,6 +21,7 @@ __all__ = [
     "extract_code",
     "grep",
     "note",
+    "otro_bloque",
     "recurse",
     "render",
     "render_handle",

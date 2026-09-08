@@ -6,33 +6,39 @@ nada del Log: las variables del REPL son estado externo, como una base de datos.
 
 from __future__ import annotations
 
-from catalejo.core import Cell, Fail, Log, Message, Role, Status
+from catalejo.core import ZERO, Cell, Fail, Log, Message, Role, Status
 
 from .environment import Environment, Output
 
 FENCE = "```"
 
+SOBRA = (
+    "[repl] tu mensaje traía más de un bloque y solo corrió el primero. Manda uno por "
+    "turno: lo que venía abajo no se ejecutó."
+)
 
-def extract_code(texto: str) -> str:
-    """Saca el bloque cercado CERRADO del mensaje del modelo.
 
-    Devuelve "" en dos casos, y los dos significan "esto es una respuesta final,
-    no código": que no haya cerca, y que la cerca esté abierta y sin cerrar. El
-    segundo importa. Un bloque a medias, sea por unos backticks sueltos en la
-    prosa o por una respuesta cortada, no puede correr como código, porque si no
-    una cerca sin terminar rompe el contrato de "prosa quiere decir terminé".
+def _cercado(texto: str) -> tuple[str, str]:
+    """El primer bloque cercado CERRADO, y lo que quedó del mensaje después de él.
 
-    Es la única fuente de verdad sobre qué cuenta como código, así que el
-    executor y el voto nunca pueden estar en desacuerdo: la FORMA de la respuesta
-    decide el control.
+    Devuelve "" como código en dos casos, y los dos significan "esto es una
+    respuesta final, no código": que no haya cerca, y que la cerca esté abierta y
+    sin cerrar. El segundo importa. Un bloque a medias, sea por unos backticks
+    sueltos en la prosa o por una respuesta cortada, no puede correr como código,
+    porque si no una cerca sin terminar rompe el contrato de "prosa quiere decir
+    terminé".
+
+    Es el único parser de cercas del repo: `extract_code` y `otro_bloque` salen
+    los dos de acá, así que no pueden estar en desacuerdo sobre dónde termina un
+    bloque.
     """
     abre = texto.find(FENCE)
     if abre < 0:
-        return ""  # sin cerca: prosa, o sea una respuesta final
+        return "", ""  # sin cerca: prosa, o sea una respuesta final
     resto = texto[abre + len(FENCE) :]
     cierra = resto.find(FENCE)
     if cierra < 0:
-        return ""  # cerca sin cerrar: nunca correr medio bloque
+        return "", ""  # cerca sin cerrar: nunca correr medio bloque
     # Saca la etiqueta de lenguaje de la línea de apertura (```python), pero solo
     # si ese salto de línea está ANTES del cierre. Si no, un bloque de una línea
     # seguido de prosa se parsea al revés.
@@ -40,7 +46,27 @@ def extract_code(texto: str) -> str:
     if 0 <= nl < cierra:
         resto = resto[nl + 1 :]
         cierra -= nl + 1
-    return resto[:cierra].strip()
+    return resto[:cierra].strip(), resto[cierra + len(FENCE) :]
+
+
+def extract_code(texto: str) -> str:
+    """El código que el modelo propuso: el PRIMER bloque cercado y cerrado.
+
+    Es la única fuente de verdad sobre qué cuenta como código, así que el
+    executor y el voto nunca pueden estar en desacuerdo: la FORMA de la respuesta
+    decide el control.
+    """
+    return _cercado(texto)[0]
+
+
+def otro_bloque(texto: str) -> bool:
+    """Si además del que corre quedó un segundo bloque, que no corre.
+
+    Va uno por turno, y hasta acá el resto se caía en silencio: el modelo pedía
+    dos cosas, veía una sola salida y no tenía cómo saber que la otra nunca pasó.
+    Es el mismo defecto que el `grep` que recortaba sin decirlo.
+    """
+    return bool(_cercado(_cercado(texto)[1])[0])
 
 
 def render(out: Output) -> str:
@@ -82,18 +108,30 @@ def executor(env: Environment) -> Cell:
     votando CONTINUE. `fails` es para cuando se rompe la maquinaria, o sea cuando
     el Environment mismo no responde, y ahí el voto queda en QUIET para que el
     loop corte en vez de seguir pidiéndole código a un REPL muerto.
+
+    Corre lo que propuso el MODELO, así que mira el rol antes que el texto. Si el
+    último dicho no es del modelo no hay propuesta y esta célula no opina, que es
+    el caso del worker caído: no agregó nada, y el último dicho pasa a ser la
+    salida anterior del REPL. Esa salida es texto del contexto no confiable, y
+    correrla sería ejecutar el corpus.
     """
 
     async def cell(seen: Log) -> Log:
-        code = extract_code(seen.said[-1].text if seen.said else "")
+        ultimo = seen.said[-1] if seen.said else None
+        if ultimo is None or ultimo.role is not Role.ASSISTANT:
+            return ZERO
+        code = extract_code(ultimo.text)
         if not code:
             return Log(vote=Status.DONE)
         try:
             out = await env.run(code)
         except Exception as e:
             return Log(fails=(Fail("repl", f"{type(e).__name__}: {e}"),))
+        salida = render(out)
+        if otro_bloque(ultimo.text):
+            salida = f"{salida}\n{SOBRA}"
         return Log(
-            said=(Message(Role.USER, render(out)),),
+            said=(Message(Role.USER, salida),),
             vote=Status.CONTINUE,
             spent=out.spent,
             # Volvió algo: el modelo tiene de dónde sacar lo que diga después. Un

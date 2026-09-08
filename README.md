@@ -259,6 +259,16 @@ es la que sabe.
 Un bloque cercado sin cerrar no corre nunca. Si corriera, una respuesta cortada a la mitad rompería
 el contrato de "prosa quiere decir terminé".
 
+Y corre solo lo que dijo el modelo, así que mira el rol antes que el texto. Cuando el worker se cae
+no agrega nada y el último dicho pasa a ser la salida anterior del REPL, que es texto que salió del
+contexto: si ahí adentro viene un bloque cercado, mirar el último dicho sin mirar quién lo dijo es
+ejecutar el corpus. Sin propuesta el executor no opina, el voto queda en QUIET y el turno corta con
+el `Fail` del modelo a la vista.
+
+De un mensaje con dos bloques corre el primero y lo dice. Tragarse el segundo es el mismo defecto que
+el `grep` que recortaba en silencio: el modelo pidió dos cosas, ve una salida y no tiene cómo saber
+que la otra nunca pasó.
+
 Un snippet que revienta no es un `Fail`. Es flujo normal del REPL: el modelo ve el error en la
 salida y lo corrige en el bloque siguiente. `fails` es para cuando se rompe la maquinaria, o sea
 cuando el Environment mismo no responde, y ahí el voto queda en QUIET para que el loop corte en vez

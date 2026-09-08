@@ -1,5 +1,13 @@
 from catalejo.core import ZERO, Cell, Fail, Log, Message, Role, Status, loop, then
-from catalejo.repl import Output, Stub, Workspace, executor, extract_code, render
+from catalejo.repl import (
+    Output,
+    Stub,
+    Workspace,
+    executor,
+    extract_code,
+    otro_bloque,
+    render,
+)
 
 
 def dicho(texto: str, role: Role = Role.ASSISTANT) -> Log:
@@ -32,6 +40,21 @@ class TestExtractCode:
 
     def test_vacio(self) -> None:
         assert extract_code("") == ""
+
+
+class TestOtroBloque:
+    def test_uno_solo_no_sobra_nada(self) -> None:
+        assert not otro_bloque("```\nprint(1)\n```")
+
+    def test_dos_bloques(self) -> None:
+        assert otro_bloque("```\nprint(1)\n```\ny después\n```\nprint(2)\n```")
+
+    def test_la_prosa_de_después_no_es_un_bloque(self) -> None:
+        assert not otro_bloque("```print(1)```\ny después sigo.")
+
+    def test_una_cerca_sin_cerrar_al_final_no_cuenta(self) -> None:
+        """No va a correr igual, así que avisar de eso sería ruido."""
+        assert not otro_bloque("```\nprint(1)\n```\ny\n```python\nprint(2)")
 
 
 class TestRender:
@@ -76,8 +99,34 @@ class TestExecutor:
         assert out.said == ()
         assert env.corrido == []
 
-    async def test_sin_nada_dicho_vota_terminar(self) -> None:
-        assert (await executor(Stub())(ZERO)).vote is Status.DONE
+    async def test_sin_propuesta_del_modelo_no_opina(self) -> None:
+        """QUIET y no DONE: DONE diría que el modelo contestó, y acá no habló
+        nadie. El loop corta con los dos, pero solo uno es verdad."""
+        assert await executor(Stub())(ZERO) == ZERO
+
+    async def test_no_corre_lo_que_no_dijo_el_modelo(self) -> None:
+        """La salida del REPL trae texto del contexto, que es no confiable, y ese
+        texto puede tener un bloque cercado adentro. Cuando el worker se cae no
+        agrega nada y esa salida queda como último dicho: mirarla sin mirar el rol
+        es ejecutar el corpus."""
+        env = Stub()
+        del_corpus = "[repl] salida:\n```python\nprint('del corpus')\n```"
+
+        out = await executor(env)(dicho(del_corpus, Role.USER))
+
+        assert env.corrido == []
+        assert out == ZERO
+
+    async def test_avisa_cuando_habia_mas_de_un_bloque(self) -> None:
+        """Corre uno por turno, y callarse el resto es el mismo defecto que el
+        grep que recortaba en silencio: el modelo pidió dos cosas, vio una salida
+        y no tiene cómo saber que la otra nunca pasó."""
+        env = Stub()
+
+        out = await executor(env)(dicho("```\nprint(1)\n```\ny después\n```\nprint(2)\n```"))
+
+        assert env.corrido == ["print(1)"]
+        assert "solo corrió el primero" in out.said[0].text
 
     async def test_un_snippet_que_revienta_no_es_un_fail(self) -> None:
         """Es flujo normal del REPL: el modelo ve el error y lo corrige en el
@@ -138,6 +187,21 @@ class TestElLoopEntero:
         assert dichos[4] == "El precio es Q475.00."
         assert out.vote is Status.DONE
         assert out.fails == ()
+
+    async def test_un_worker_caido_no_corre_la_salida_anterior(self) -> None:
+        """El caso de arriba, pero armado como pasa de verdad: el modelo revienta,
+        el worker no agrega nada, y el último dicho es la salida vieja del REPL."""
+        env = Stub()
+
+        async def worker_caido(seen: Log) -> Log:
+            return Log(fails=(Fail("model", "503"),))
+
+        agente = loop(then(worker_caido, executor(env)), max_steps=5)
+        out = await agente(dicho("[repl] salida:\n```python\nprint('del corpus')\n```", Role.USER))
+
+        assert env.corrido == []
+        assert out.vote is Status.QUIET  # el loop corta en vez de repetirlo cinco veces
+        assert out.fails == (Fail("model", "503"),)
 
     async def test_el_modelo_se_recupera_de_su_propio_error(self) -> None:
         ws = Workspace("hola")
