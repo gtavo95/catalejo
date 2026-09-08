@@ -65,11 +65,18 @@ _SEGUROS = (
     "tuple",
     "zip",
     # Para que el modelo pueda escribir un try/except sobre su propio código.
+    # Un nombre que falta acá no desactiva el except: lo convierte en un
+    # `NameError: name 'ZeroDivisionError' is not defined` que tapa el error de
+    # verdad con uno que no tiene nada que ver.
+    "AttributeError",
     "Exception",
     "IndexError",
     "KeyError",
+    "NameError",
+    "StopIteration",
     "TypeError",
     "ValueError",
+    "ZeroDivisionError",
 )
 
 MAX_HITS = 50
@@ -199,7 +206,16 @@ class Workspace:
                 # No habilita nada: reemplaza un error críptico por uno que dice
                 # qué usar en su lugar.
                 "__import__": _sin_import,
+                # Definir una clase pide esto en los builtins y `__name__` en el
+                # namespace. Sin las dos cosas, `class Nota: ...` muere con
+                # `NameError: __build_class__ not found`, que es el mismo error
+                # que no enseña nada del `import`. Habilitarlo no ensancha la
+                # ventana: una clase nueva no alcanza nada que el modelo no
+                # alcanzara ya, y la ventana la define qué builtins hay, no si se
+                # puede declarar un tipo.
+                "__build_class__": builtins.__build_class__,
             },
+            "__name__": "repl",
             "grep": grep,
             **(extra or {}),
             # Va último para que nadie pise el payload por accidente.
