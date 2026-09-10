@@ -12,6 +12,11 @@ Esto NO es un sandbox. El namespace viene con los builtins recortados, sin
 accidente, y no alcanza contra código que se lo proponga, porque desde cualquier
 objeto se llega a `__class__.__bases__` y de ahí a media biblioteca estándar.
 
+`json` está en el namespace como módulo, así que `json.__builtins__` es un camino
+derecho a `open`. No cambia la conclusión, la subraya: esto no aguanta código que
+se lo proponga, y por eso lo que se le da al modelo se elige por lo que hace, no
+por lo difícil que sea escaparse. `json` entra porque parsear no tiene efectos.
+
 La frontera de verdad es el contenedor, y va después. Mientras el contexto lo
 cargues vos y el modelo sea el único que escribe código, esto sirve. En el
 momento en que el contexto venga de afuera, el aislamiento tiene que ser un
@@ -26,7 +31,9 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import json
 import re
+import unicodedata
 from collections.abc import Coroutine, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, TypeVar
@@ -35,8 +42,6 @@ from .environment import Output
 
 T = TypeVar("T")
 
-# Lo que el modelo puede usar. Nada que escriba, abra, importe o evalúe: la
-# ventana es de solo lectura.
 _SEGUROS = (
     "abs",
     "all",
@@ -63,8 +68,8 @@ _SEGUROS = (
     "str",
     "sum",
     "tuple",
+    "type",
     "zip",
-    # Para que el modelo pueda escribir un try/except sobre su propio código.
     "Exception",
     "IndexError",
     "KeyError",
@@ -74,17 +79,19 @@ _SEGUROS = (
 
 MAX_HITS = 50
 
-# Lo que el preámbulo le dice al modelo que tiene a mano. Vive acá, al lado de
-# _SEGUROS, porque solo el Environment sabe qué ofrece: si mañana el sandbox es un
-# contenedor con `re` importable, cambia esta nota junto con la lista de arriba.
-# Sin ella el modelo escribe `import re` y se come un turno entero descubriendo
-# que no anda.
+CABECERA = re.compile(r"^=== (.+) ===$")
+
 HERRAMIENTAS = (
     "Es Python real con los builtins recortados: no hay `import`, `open` ni `eval`. "
     "Tienes `grep(texto, patron)` para expresiones regulares: devuelve las líneas que "
     "casan, numeradas, con el total en la primera línea. Muestra hasta 50; si hay más, "
-    "sube el tope con `grep(texto, patron, max_hits=500)` o afina el patrón. El resto de "
-    "Python funciona normal: rebanar, `len`, comprensiones, `sorted`."
+    "sube el tope con `grep(texto, patron, max_hits=500)` o afina el patrón. No distingue "
+    "mayúsculas ni acentos, así que `pulgon` encuentra `Pulgón` y `arana` encuentra "
+    "`araña`; cuando el caso importe, `grep(texto, patron, exacto=True)`. Tienes `json` "
+    "sin importarlo, para `json.loads` sobre un bloque que venga del contexto. Si el texto "
+    "trae documentos separados por una línea `=== ruta ===`, cada resultado sale como "
+    "`ruta:linea: contenido`, así que no hace falta que busques a qué archivo pertenece. "
+    "El resto de Python funciona normal: rebanar, `len`, comprensiones, `sorted`."
 )
 
 
@@ -99,13 +106,52 @@ def _sin_import(nombre: str, *_: object, **__: object) -> object:
     """
     raise ImportError(
         f"no hay `import` en este REPL, así que `{nombre}` no está disponible. "
-        f"Para expresiones regulares usa grep(texto, patron). Para contar, un dict: "
+        f"`json` ya está en el namespace, usalo sin importarlo. Para expresiones "
+        f"regulares usa grep(texto, patron). Para contar, un dict: "
         f"`c = {{}}; c[k] = c.get(k, 0) + 1`. El resto de Python funciona normal."
     )
 
 
-def grep(texto: str, patron: str, max_hits: int = MAX_HITS) -> str:
+def sin_acento(s: str) -> str:
+    """La misma cadena sin marcas diacríticas.
+
+    Descompone en NFD y tira las combinantes, así que también pliega la eñe:
+    `araña` y `arana` quedan iguales. Es agresivo a propósito, porque el modelo
+    escribe el término tal como lo dice el cliente y el cliente no pone tildes.
+    """
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+def grep(texto: str, patron: str, max_hits: int = MAX_HITS, *, exacto: bool = False) -> str:
     """Las líneas que casan con el patrón, numeradas, con el total adelante.
+
+    Pliega mayúsculas y acentos, y ese default no es comodidad. Sobre el catálogo
+    agronómico, `mosca blanca` en minúscula devolvía 6 de las 23 líneas que hay, y
+    `arana roja` sin la eñe devolvía cero con seis en el texto. El modelo no tiene
+    forma de enterarse: recibe un número que parece el total. Es el mismo error que
+    el tope silencioso, que ya está resuelto dos párrafos más abajo, entrando por
+    otra puerta.
+
+    El patrón NO se pasa a minúsculas, se le sacan los acentos y las mayúsculas van
+    por la bandera. En una regex `\\S`, `\\D`, `\\W` y `\\B` significan lo contrario
+    que sus versiones minúsculas, así que bajar el patrón entero convierte "no
+    espacio" en "espacio" y rompe en silencio cualquier búsqueda con clases.
+
+    `exacto=True` para cuando el caso es el dato: sobre el corpus de código Go de
+    `demo.py v1`, `Plan` y `plan` son cosas distintas.
+
+    Cuando el texto es una concatenación de documentos con la línea `=== ruta ===`
+    adelante, cada hit sale con su documento. Es la diferencia entre encontrar y
+    saber qué encontraste: sobre el catálogo agronómico, un hit cae a una mediana de
+    119 líneas de su cabecera y a 230 en el peor eje, así que averiguar de qué
+    producto era la línea 5157 costaba imprimir una ventana y caminar para atrás.
+    Una corrida se fue a 108 mil tokens haciendo justamente eso. El dato ya estaba en
+    el texto y no viajaba con el resultado; ahora viaja.
+
+    Que pliega va dicho en `HERRAMIENTAS` y no en la cabecera de cada resultado,
+    porque es una propiedad fija de la herramienta y no un hecho de esta corrida.
+    La cabecera dice lo que cambia entre llamada y llamada, que es cuántas hay y
+    cuántas se muestran.
 
     Existe porque `re` no es importable. Un contexto grande se recorre con esto,
     no imprimiéndolo: el punto del RLM es que el bulto nunca entre al prompt.
@@ -120,8 +166,21 @@ def grep(texto: str, patron: str, max_hits: int = MAX_HITS) -> str:
     Cero coincidencias también se dice con todas las letras. Devolver "" es
     indistinguible de un snippet que no imprimió nada.
     """
-    rx = re.compile(patron)
-    hits = [f"{i}: {linea}" for i, linea in enumerate(texto.splitlines(), 1) if rx.search(linea)]
+    lineas = texto.splitlines()
+    if exacto:
+        rx = re.compile(patron)
+        campo = lineas
+    else:
+        rx = re.compile(sin_acento(patron), re.IGNORECASE)
+        campo = [sin_acento(l) for l in lineas]
+    hits = []
+    doc = ""
+    for i, (original, buscable) in enumerate(zip(lineas, campo), 1):
+        cabeza = CABECERA.match(original)
+        if cabeza:
+            doc = cabeza.group(1)
+        if rx.search(buscable):
+            hits.append(f"{doc}:{i}: {original}" if doc else f"{i}: {original}")
     casan = "casa" if len(hits) == 1 else "casan"
     linea = "línea" if len(hits) == 1 else "líneas"
     cabecera = f"{len(hits)} {linea} {casan} con {patron!r}."
@@ -192,17 +251,12 @@ class Workspace:
         self._globals: dict[str, object] = {
             "__builtins__": {
                 **{nombre: getattr(builtins, nombre) for nombre in _SEGUROS},
-                # `print` no escribe en sys.stdout: escribe en un buffer nuestro.
-                # Redirigir sys.stdout es global al proceso y se pisa entre
-                # workspaces corriendo en paralelo; esto es de cada uno.
                 "print": self._print,
-                # No habilita nada: reemplaza un error críptico por uno que dice
-                # qué usar en su lugar.
                 "__import__": _sin_import,
             },
             "grep": grep,
+            "json": json,
             **(extra or {}),
-            # Va último para que nadie pise el payload por accidente.
             var: payload,
         }
 
@@ -230,8 +284,6 @@ class Workspace:
         async with self._lock:
             if self.bridge is None:
                 return await asyncio.to_thread(self._run_sync, code)
-            # El hilo del exec no puede alcanzar el loop por su cuenta, así que se
-            # lo dejamos acá antes de cruzar.
             self.bridge.loop = asyncio.get_running_loop()
             antes = self.bridge.spent
             out = await asyncio.to_thread(self._run_sync, code)
@@ -242,6 +294,6 @@ class Workspace:
         err = ""
         try:
             exec(code, self._globals)
-        except Exception as e:  # el modelo tiene que VER el error para corregirlo
+        except Exception as e:
             err = f"{type(e).__name__}: {e}"
         return Output(stdout="".join(self._salida), err=err)

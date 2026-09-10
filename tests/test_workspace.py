@@ -143,6 +143,59 @@ class TestGrep:
         assert "max_hits" in out.splitlines()[0]
         assert len(out.splitlines()) == 4
 
+    def test_no_distingue_mayusculas(self) -> None:
+        """El modelo escribe el término del cliente, que va en minúscula.
+
+        Sobre el catálogo agronómico `mosca blanca` devolvía 6 de las 23 líneas que
+        hay, y el modelo no tenía cómo enterarse: el número que recibe parece el total.
+        """
+        texto = "Mosca Blanca ( Bemisia tabaci )\nmosca blanca en tomate"
+
+        assert grep(texto, "mosca blanca").startswith("2 líneas casan")
+
+    def test_no_distingue_acentos(self) -> None:
+        """`arana roja` devolvía cero sobre un texto que la tiene seis veces."""
+        texto = "Araña roja ( Tetranychus urticae )\nPulgón ( Aphis gossypii )"
+
+        assert grep(texto, "arana roja").startswith("1 línea casa")
+        assert grep(texto, "pulgon").startswith("1 línea casa")
+
+    def test_devuelve_la_linea_original_no_la_plegada(self) -> None:
+        """Se busca sobre la copia sin acentos y se muestra lo que dice el texto."""
+        out = grep("Pulgón ceniciento", "pulgon")
+
+        assert out.splitlines()[-1] == "1: Pulgón ceniciento"
+
+    def test_exacto_respeta_el_caso(self) -> None:
+        """En el corpus de código Go, `Plan` y `plan` son cosas distintas."""
+        texto = "type Plan struct\nfunc plan() {}"
+
+        assert grep(texto, "Plan", exacto=True).startswith("1 línea casa")
+        assert grep(texto, "Plan").startswith("2 líneas casan")
+
+    def test_no_rompe_las_clases_de_la_regex(self) -> None:
+        """Bajar el patrón a minúsculas convertiría `\\S` en `\\s`, que es lo contrario.
+
+        Se rompería en silencio: la búsqueda devuelve otra cosa, no un error.
+        """
+        assert grep("Q475.00\nsin precio", r"Q\d+\.\d\d").splitlines()[-1] == "1: Q475.00"
+        assert grep("hola mundo\nholamundo", r"hola\S").splitlines()[-1] == "2: holamundo"
+
+    def test_el_hit_trae_su_documento(self) -> None:
+        """Encontrar la línea no sirve si no se sabe de qué archivo es.
+
+        Sobre el catálogo agronómico un hit cae a 119 líneas de su cabecera, así que
+        averiguarlo costaba imprimir una ventana y caminar para atrás. Una corrida se
+        fue a 108 mil tokens haciendo eso.
+        """
+        texto = "=== productos/segador.md ===\n1.42 L/Ha\n=== productos/otro.md ===\nnada"
+
+        assert grep(texto, "L/Ha").splitlines()[-1] == "productos/segador.md:2: 1.42 L/Ha"
+
+    def test_sin_cabeceras_numera_como_siempre(self) -> None:
+        """Un texto que no es una concatenación de documentos no gana un prefijo vacío."""
+        assert grep("uno\ndos precio", "precio").splitlines()[-1] == "2: dos precio"
+
     async def test_esta_en_el_namespace_del_modelo(self) -> None:
         ws = Workspace("uno\ndos precio")
 
