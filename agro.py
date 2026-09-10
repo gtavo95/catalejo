@@ -28,6 +28,20 @@ minúscula traía 6 de las 23 líneas que hay y `arana roja` sin la eñe traía 
 Por eso ahora pliega caso y acentos, y `ontologia/objetivos.md` sigue en el corpus
 por las cuatro que sí necesitan el alias.
 
+# Los dos puntos que costaban el turno entero
+
+`ESQUEMA` dice "donde está el dato duro. Ese bloque trae `crops`, `targets`..." y no
+"...el dato duro: `crops`, `targets`...". Con los dos puntos, Gemini devolvía turno
+vacío en 13 de 13 corridas, o sea 65 llamadas contando reintentos, cortando con
+MALFORMED_FUNCTION_CALL sin que este repo declare herramientas en ninguna parte. Sin
+ellos, 6 de 6. Es un solo cambio, medido contra el mismo corpus en la misma ronda, y
+mientras tanto el eval de la wiki daba 6/6 con los dos rigs.
+
+No sé el mecanismo. Sospecho lo mismo que con `FUENTE: <ruta>` en `evals.py`: dos
+puntos seguidos de una lista de identificadores entre backticks se leen como la firma
+de una función, y el modelo emite algo que su propio parser rechaza. Las dos filas
+están en `bitacora.tsv`. Antes de reescribir esta línea, medila.
+
 # El riesgo que gobierna el contrato
 
 Una dosis inventada se aplica en una hectárea de verdad. El modo de falla que
@@ -60,8 +74,9 @@ ESQUEMA = (
     "cada uno precedido por una línea `=== ruta ===`. En `productos/` hay una ficha por "
     "producto: frontmatter con `tags` (insecticida, fungicida, foliar, apto-organico) y "
     "`certified_crops`, un resumen, presentaciones con precios, ingredientes, y un bloque "
-    "`# Agronomía` en JSON que es donde está el dato duro: `crops`, `targets` (cada plaga "
-    "con su `name`, su `kind` y sus `aliases`, que traen el nombre científico), `overrides` "
+    "`# Agronomía` en JSON que es donde está el dato duro. Ese bloque trae `crops`, "
+    "`targets` (cada plaga con su `name`, su `kind` y sus `aliases`, que traen el nombre "
+    "científico), `overrides` "
     "con los `regimens` de dosis (`dose` con `min`, `max`, `unit` y `basis`, más `route` y "
     "`water_volume`) y `safety` (pH del agua, incompatibilidades, horas de separación, "
     "fitotoxicidad, días a cosecha). Abajo de todo, `# Ficha` es el texto de la ficha del "
