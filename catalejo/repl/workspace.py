@@ -91,6 +91,9 @@ HERRAMIENTAS = (
     "sin importarlo, para `json.loads` sobre un bloque que venga del contexto. Si el texto "
     "trae documentos separados por una línea `=== ruta ===`, cada resultado sale como "
     "`ruta:linea: contenido`, así que no hace falta que busques a qué archivo pertenece. "
+    "Ese prefijo se agrega al imprimir y NO es parte de lo que se busca: un patrón que lo "
+    "incluya, como `productos/x\\.md:.*dosis`, no casa nunca y te devuelve cero. Para mirar un "
+    "solo documento, `grep(texto, patron, doc='x')`, que compara contra la ruta. "
     "El resto de Python funciona normal: rebanar, `len`, comprensiones, `sorted`."
 )
 
@@ -122,7 +125,14 @@ def sin_acento(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
-def grep(texto: str, patron: str, max_hits: int = MAX_HITS, *, exacto: bool = False) -> str:
+def grep(
+    texto: str,
+    patron: str,
+    max_hits: int = MAX_HITS,
+    *,
+    exacto: bool = False,
+    doc: str = "",
+) -> str:
     """Las líneas que casan con el patrón, numeradas, con el total adelante.
 
     Pliega mayúsculas y acentos, y ese default no es comodidad. Sobre el catálogo
@@ -139,6 +149,20 @@ def grep(texto: str, patron: str, max_hits: int = MAX_HITS, *, exacto: bool = Fa
 
     `exacto=True` para cuando el caso es el dato: sobre el corpus de código Go de
     `demo.py v1`, `Plan` y `plan` son cosas distintas.
+
+    `doc="viventem"` acota la búsqueda a los documentos cuya ruta contenga eso, y
+    existe por un cero falso medido. El resultado sale prefijado con `ruta:`, así
+    que el modelo deduce lo razonable y escribe `productos/viventem\\.md:.*DOSIS`
+    para mirar una sola ficha. Ese prefijo se arma al imprimir y no está en el
+    texto sobre el que se busca, así que el patrón no casa nunca. En la suite
+    agronómica contra luna pasó cinco veces en una sola corrida, todas en el caso
+    que pregunta si un dato ESTÁ, que es donde un cero falso se vuelve una
+    respuesta segura y equivocada. Ese caso se llevó 223 mil de los 503 mil
+    tokens de la suite.
+
+    Un `doc` que no casa con ningún documento se dice con todas las letras, por lo
+    mismo que se dice el cero: "no hay líneas en esa ficha" y "esa ficha no existe"
+    son dos respuestas distintas y el modelo tiene que poder separarlas.
 
     Cuando el texto es una concatenación de documentos con la línea `=== ruta ===`
     adelante, cada hit sale con su documento. Es la diferencia entre encontrar y
@@ -173,21 +197,38 @@ def grep(texto: str, patron: str, max_hits: int = MAX_HITS, *, exacto: bool = Fa
     else:
         rx = re.compile(sin_acento(patron), re.IGNORECASE)
         campo = [sin_acento(l) for l in lineas]
+    filtro = sin_acento(doc).lower()
     hits = []
-    doc = ""
+    mirados: list[str] = []
+    actual = ""
+    dentro = not filtro
     for i, (original, buscable) in enumerate(zip(lineas, campo), 1):
         cabeza = CABECERA.match(original)
         if cabeza:
-            doc = cabeza.group(1)
-        if rx.search(buscable):
-            hits.append(f"{doc}:{i}: {original}" if doc else f"{i}: {original}")
+            actual = cabeza.group(1)
+            dentro = not filtro or filtro in sin_acento(actual).lower()
+            if dentro and filtro:
+                mirados.append(actual)
+        if dentro and rx.search(buscable):
+            hits.append(f"{actual}:{i}: {original}" if actual else f"{i}: {original}")
+    if filtro and not mirados:
+        return (
+            f"ningún documento casa con {doc!r}, así que no se buscó nada. `doc` se compara "
+            f"contra la ruta de la línea `=== ruta ===`, no contra el contenido."
+        )
+    if len(mirados) == 1:
+        ambito = f" en {mirados[0]}"
+    elif mirados:
+        ambito = f" en los {len(mirados)} documentos que casan con {doc!r}"
+    else:
+        ambito = ""
     casan = "casa" if len(hits) == 1 else "casan"
     linea = "línea" if len(hits) == 1 else "líneas"
-    cabecera = f"{len(hits)} {linea} {casan} con {patron!r}."
+    cabecera = f"{len(hits)} {linea} {casan} con {patron!r}{ambito}."
     if len(hits) > max_hits:
         cabecera = (
-            f"{len(hits)} líneas casan con {patron!r}; estas son las primeras {max_hits}. "
-            f"Para el resto subí max_hits o afina el patrón."
+            f"{len(hits)} líneas casan con {patron!r}{ambito}; estas son las primeras "
+            f"{max_hits}. Para el resto subí max_hits o afina el patrón."
         )
         hits = hits[:max_hits]
     return "\n".join([cabecera, *hits])

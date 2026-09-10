@@ -202,3 +202,68 @@ class TestGrep:
         out = await ws.run("print(grep(ctx, 'precio'))")
 
         assert out.stdout == "1 línea casa con 'precio'.\n2: dos precio\n"
+
+
+class TestGrepPorDocumento:
+    CATALOGO = (
+        "=== productos/viventem.md ===\n"
+        "DOSIS: 1.0 L/Ha\n"
+        "pH del agua 5.5\n"
+        "=== productos/segador.md ===\n"
+        "DOSIS: 0.5 L/Mz\n"
+    )
+
+    def test_acota_a_una_ficha(self) -> None:
+        out = grep(self.CATALOGO, "DOSIS", doc="viventem")
+
+        assert out.splitlines()[0] == "1 línea casa con 'DOSIS' en productos/viventem.md."
+        assert out.splitlines()[-1] == "productos/viventem.md:2: DOSIS: 1.0 L/Ha"
+
+    def test_el_prefijo_impreso_no_es_buscable(self) -> None:
+        """El cero falso que paga esto.
+
+        El resultado sale como `ruta:linea: contenido`, así que el modelo deduce lo
+        razonable y ancla el patrón en la ruta. Ese prefijo se arma al imprimir, no
+        está en el texto, y el patrón no casa nunca. En la suite agronómica contra
+        luna pasó cinco veces en una corrida, todas en el caso que pregunta si un
+        dato está.
+        """
+        assert grep(self.CATALOGO, r"productos/viventem\.md:.*DOSIS").startswith("0 líneas")
+
+        assert grep(self.CATALOGO, "DOSIS", doc="viventem").startswith("1 línea casa")
+
+    def test_una_ficha_que_no_existe_no_es_cero_lineas(self) -> None:
+        """"No hay líneas en esa ficha" y "esa ficha no existe" son dos respuestas."""
+        out = grep(self.CATALOGO, "DOSIS", doc="royano")
+
+        assert out.startswith("ningún documento casa con 'royano'")
+        assert "`=== ruta ===`" in out
+
+    def test_la_ficha_esta_y_el_dato_no(self) -> None:
+        out = grep(self.CATALOGO, "L/Mz", doc="viventem")
+
+        assert out == "0 líneas casan con 'L/Mz' en productos/viventem.md."
+
+    def test_varias_fichas_casan_y_lo_dice(self) -> None:
+        out = grep(self.CATALOGO, "DOSIS", doc="productos/")
+
+        assert out.splitlines()[0] == (
+            "2 líneas casan con 'DOSIS' en los 2 documentos que casan con 'productos/'."
+        )
+
+    def test_pliega_como_el_patron(self) -> None:
+        texto = "=== fichas/Pulgón.md ===\nnada\n"
+
+        assert grep(texto, "nada", doc="pulgon").startswith("1 línea casa")
+
+    def test_sin_doc_no_cambia_nada(self) -> None:
+        """El default tiene que dar exactamente lo de antes, o las filas viejas mienten."""
+        assert grep("uno\ndos precio", "precio") == "1 línea casa con 'precio'.\n2: dos precio"
+
+    def test_el_tope_dice_el_ambito(self) -> None:
+        texto = "=== a.md ===\n" + "\n".join(f"linea {i}" for i in range(100))
+
+        out = grep(texto, "linea", max_hits=3, doc="a.md")
+
+        assert out.startswith("100 líneas casan con 'linea' en a.md; estas son las primeras 3.")
+        assert len(out.splitlines()) == 4
