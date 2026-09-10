@@ -28,7 +28,34 @@ class Reply:
 
 
 class Model(Protocol):
+    """El puerto: lo único que el motor necesita de un proveedor.
+
+    `worker` y `recurse` piden esto y nada más. Un `Stub` de tres líneas lo
+    cumple, y por eso los tests del álgebra corren sin red.
+    """
+
     async def complete(self, conv: Conversation) -> Reply: ...
+
+
+class Provider(Protocol):
+    """El puerto ancho: `Model` más el ciclo de vida y el nombre.
+
+    Existe porque la aplicación necesita dos cosas que al motor no le importan:
+    cerrar el cliente HTTP cuando termina, y decir con qué modelo contestó. Sin
+    esto, `agro.py` tenía que anotarse `Gemini | OpenAI`, o sea nombrar a los dos
+    adaptadores concretos para pedirles algo que el puerto no declaraba. Un
+    puerto que no alcanza se paga listando implementaciones.
+
+    Los adaptadores lo cumplen sin heredar nada. `Stub` no, a propósito: un doble
+    de test no tiene cliente que cerrar, y obligarlo a inventarse un `aclose`
+    sería la abstracción filtrándose hacia el otro lado.
+    """
+
+    model: str
+
+    async def complete(self, conv: Conversation) -> Reply: ...
+
+    async def aclose(self) -> None: ...
 
 
 class Stub:

@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from catalejo.core import ZERO, Cell, Log, Message, Role, Status, loop, then
-from catalejo.llm import Gemini, OpenAI
+from catalejo.llm import Gemini, OpenAI, Provider
 from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
@@ -266,7 +266,7 @@ def traza() -> Cell:
     return cell
 
 
-def armar(texto: str, modelo: Gemini | OpenAI, *, ver: bool) -> tuple[Cell, Workspace]:
+def armar(texto: str, modelo: Provider, *, ver: bool) -> tuple[Cell, Workspace]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
     El workspace se arma una sola vez a propósito. Las variables persisten entre
@@ -366,11 +366,12 @@ async def responder(
     return respuesta
 
 
-def proveedor(argv: list[str]) -> Gemini | OpenAI:
+def proveedor(argv: list[str]) -> Provider:
     """El modelo de la raíz, y con qué proveedor se habla.
 
     Es un `if` y no una capa de abstracción porque los dos adaptadores toman los
-    mismos parámetros. `thinking="low"` en los dos: la raíz decide cuál es la
+    mismos parámetros y los dos cumplen `Provider`, que es el puerto ancho: el
+    resto de `agro.py` no vuelve a nombrar a ninguno de los dos. `thinking="low"` en los dos: la raíz decide cuál es la
     próxima consulta, que es razonamiento barato, y el trabajo pesado lo hace el
     REPL gratis.
 

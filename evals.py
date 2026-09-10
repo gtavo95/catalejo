@@ -44,7 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from catalejo.core import Log, Message, Role, loop, then
-from catalejo.llm import Gemini
+from catalejo.llm import Gemini, Provider
 from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
@@ -103,7 +103,7 @@ ESQUEMA = (
 
 
 async def correr(
-    caso: Caso, texto: str, modelo: Gemini, *, recursivo: bool
+    caso: Caso, texto: str, modelo: Provider, *, recursivo: bool
 ) -> tuple[Log, Workspace, float]:
     ws = (
         recurse(texto, modelo, var="wiki", depth=0, budget=60_000)
