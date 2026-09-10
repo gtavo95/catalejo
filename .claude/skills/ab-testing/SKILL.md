@@ -147,6 +147,10 @@ error de categoría: es un seguro contra el turno vacío y contra un cambio de p
 la disponibilidad con un proveedor caído, no el Δ de tokens con los dos sanos. Lo mismo `retries=4`:
 no compra calidad, compra que la corrida termine.
 
+La trampa ya está en `bitacora.tsv` y se lee sola. Sobre la misma pregunta, `gpt-5.6-luna` con
+esfuerzo bajo gastó 12.883 tokens en 7 turnos y Gemini 25.858 en 9. Es tentador leerlo como que
+ganó, y no decide nada: es n=1, y la vara de esa palanca no es esa.
+
 Regla dura: **clasificá la palanca antes de elegir la vara.** Confundir explotación con inversión
 hace que la decisión salga mal con números impecables.
 
