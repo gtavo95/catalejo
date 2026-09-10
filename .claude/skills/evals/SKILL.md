@@ -83,6 +83,9 @@ El filtro por id ya existe, son los argumentos posicionales:
 uv run evals.py                    # los 20; con un id que no existe, los lista todos
 uv run evals.py <id> <id> <id>     # el subset
 uv run evals.py <id>               # uno solo, con la transcripción entera
+uv run evals.py --repeats=3 <id>   # ese caso tres veces, para ver si flipa
+uv run evals.py --agro             # las agronómicas, contra el agente de agro.py
+uv run evals.py --openai           # el mismo examen contra el otro proveedor
 ```
 
 Los ids no se escriben acá ni en `evals.py`: viven en el TSV porque nombran productos de un
@@ -91,6 +94,18 @@ cliente.
 **La confirmación es targeted, nunca la suite entera.** Se profundiza a n≥3 **solo los casos que
 flipan o quedan en la frontera**. Repetir un caso estable tres veces es gasto muerto: lo único que
 n compra es varianza intra-caso. La escalera de n y por qué n=1 es suerte están en `ab-testing`.
+
+El reporte ya separa las cuatro cosas que hay que separar. **Estable** es el caso que acertó en
+todas sus corridas vivas, **flipper** el que acertó en algunas, **caído** el que no acertó en
+ninguna, y **mudo** el que no dejó una sola muestra viva. La lista de flippers es la que dice qué
+profundizar a n=6; lo demás ya está decidido y repetirlo es gasto muerto.
+
+`--repeats` va con igual y no con espacio. `--repeats 3` dejaría el `3` como id de caso, porque el
+filtro por id se lleva todo argumento que no empiece con guion.
+
+Y el resumen cierra imprimiendo la fila de `bitacora.tsv` ya armada, con el sha resuelto y
+`-dirty` si el árbol no estaba limpio. `palanca`, `arm` y `nota` van en `·` porque eso lo sabe el
+que corrió, no el script.
 
 ## El gate, de gratis a caro
 
@@ -109,8 +124,10 @@ Las capas 0 y 1 corren sin red: los tests de adaptador usan `httpx.MockTransport
 **El gate es cero regresiones.** Para cada ✗ la pregunta es de regresión: ¿el baseline lo pasaba?
 Si sí, bloquea. Si ya fallaba, es pre-existente, no bloquea este cambio, pero se anota.
 
-Un ✗ que viene de `out.fails` (turno vacío del proveedor) **no es una regresión de calidad**: es
-una muestra perdida. Re-corré ese caso antes de contarlo.
+Un ✗ que viene de un turno vacío del proveedor **no es una regresión de calidad**: es una muestra
+perdida, y `resumir()` ya la saca del denominador y la reporta aparte. Se reconoce por
+`Fail.who == "model"`. Los fallos de `loop` (se quedó sin pasos o sin presupuesto) y de `grounding`
+(contestó sin mirar) sí cuentan, porque son resultados y no accidentes de la API.
 
 ## El criterio puede mentir
 
@@ -144,6 +161,5 @@ endureciste la vara y no que la amañaste a favor de tu tratamiento.
   las respuestas siguieron siendo correctas. Con ocho o diez casos alcanza y ya se saben cuáles:
   una dosis por manzana de las 23 fichas que la tienen, una de las 15 que no, un cultivo no
   certificado, una plaga que no está en el catálogo. Van en el bundle, no acá.
-- **`--repeats N` en `evals.py`.** Sin repeticiones no hay n, ni deepen de flippers, ni `pass^k`.
 - **`cachedContentTokenCount`** en el adaptador de Gemini, para descartar el confound de caché en
   vez de ignorarlo.

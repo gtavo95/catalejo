@@ -94,7 +94,8 @@ El `Log` ya trae los seams. Hay que leer más de una columna:
   comparan por el total sin mirar esto.
 - **`bridge.calls`** son las lecturas delegadas. Es donde el costo se esconde: una palanca que
   achica el prompt de la raíz puede empujar el trabajo a `llm()` y salir plana en el total. Antes
-  de festejar un ahorro en la raíz, fijate si migró a la delegación.
+  de festejar un ahorro en la raíz, fijate si migró a la delegación. `agro.py` y `evals.py` lo
+  imprimen los dos.
 - **`out.reads`** dice si consultó el corpus. Cero con respuesta en prosa es el modo de falla que
   ataca `grounded`.
 - **`out.fails`** dice si se cortó. Una corrida que murió por un turno vacío es una **muestra
@@ -184,5 +185,9 @@ Acá el evaluador es `acierta()`: si lo tocás, las corridas viejas dejan de ser
 engaña en las dos direcciones, hay que reportar una **curva y no un punto**. Ellos buscan el techo
 de capacidad; acá interesa el piso, o sea el `budget` y el `max_steps` más chicos que no pierden
 calidad. Y su hallazgo incómodo: las ganancias vienen de alcance y **fiabilidad**, casi nunca de
-eficiencia de tokens. O sea que `pass^k` (cuántas de k corridas resolvieron) es un número de
-primera clase, no un "flipeó o no".
+eficiencia de tokens. O sea que la fiabilidad es un número de primera clase, no un "flipeó o no".
+
+Los dos números que `evals.py` reporta y que no hay que confundir: **estable** es el caso que
+acertó en las n corridas, que es `pass^n` en el sentido estricto, y **aciertos sobre corridas
+vivas** es la tasa empírica. El primero es la vara para embarcar un default, porque una respuesta
+correcta dos de cada tres veces no sirve para atender a un cliente.
