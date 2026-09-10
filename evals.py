@@ -49,15 +49,6 @@ from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
 
-# Se le pide la cita porque el eval mide de qué página sale la respuesta, no solo
-# si el dato es correcto. Un dato bueno traído de la página equivocada es suerte.
-#
-# El placeholder NO va entre ángulos, y esa línea costó dos preguntas de veinte.
-# Con `FUENTE: <ruta>` la API cortaba el turno con MALFORMED_FUNCTION_CALL en el
-# 90% de las corridas de una pregunta y en el 0% de otras, sin que usemos tools en
-# ninguna parte. La ablación: pregunta + preámbulo + ángulos 1/10, sin ángulos
-# 10/10, sin preámbulo 10/10. Los `<...>` en una instrucción de formato le hacen
-# emitir algo que su propio parser lee como una llamada a función rota.
 CITA = (
     "\n\nAl final de tu respuesta agrega una línea `FUENTE: ruta/al/archivo.md` con el "
     "archivo del que sacaste el dato, o `FUENTE: ninguna` si el bundle no lo tiene."
@@ -68,7 +59,7 @@ CITA = (
 class Caso:
     id: str
     pregunta: str
-    paginas: tuple[str, ...]  # vacío = la respuesta correcta es "no hay página"
+    paginas: tuple[str, ...]
     seccion: str
     criterio: str
 
@@ -196,9 +187,6 @@ async def main(argv: list[str]) -> None:
     texto = corpus()
     print(f"corpus: {len(texto):,} caracteres (~{len(texto) // 4:,} tokens), {len(corridas)} casos")
     modelo = Gemini(thinking="low")
-    # Cada caso es un agente entero e independiente. Corren de a cuatro para no
-    # esperar veinte veces lo mismo, y de a cuatro y no de a veinte porque cada
-    # uno abre su propio hilo de `exec` y del otro lado hay una cuota.
     sem = asyncio.Semaphore(4)
 
     async def uno(caso: Caso) -> tuple[Caso, bool, Log, str, float]:

@@ -202,7 +202,7 @@ class TestElGasto:
 
         out = await ws.run("print(llm('x', ['a', 'b', 'c']))")
 
-        assert len(model.visto) == 1  # la primera pasa, las otras ven la caja vacía
+        assert len(model.visto) == 1
         assert out.stdout.count("sin presupuesto para delegar") == 2
 
 
@@ -273,7 +273,6 @@ class TestNadaSeCuentaDosVeces:
         )
         out = await agente(Log(said=(Message(Role.USER, "cuántos hay"),)))
 
-        # el turno gastó 10 del worker más 10 del hijo: el tope de 15 lo ve
         assert out.spent == 2 * COSTO
         assert out.fails == (Fail("loop", "presupuesto agotado: 20/15"),)
 
@@ -302,8 +301,6 @@ class TestElPuente:
         assert "grep(texto, patron)" in preambulo
 
 
-# Prosa escrita a mano, no plantillas: el tema de cada una solo se saca leyendo,
-# que es la única situación donde delegar en un modelo tiene sentido.
 NOTAS = [
     "El contenedor quedó varado once días. Los estibadores pararon el martes y no "
     "hubo forma de mover nada del muelle hasta que levantaron la medida. Avisamos "
@@ -333,8 +330,6 @@ class TestEnVivo:
             out = await ws.run(
                 "trozos = ctx.split('\\n===\\n')\n"
                 "for r in llm('¿por qué se retrasó el envío? Contesta en tres palabras', trozos):\n"
-                # Una respuesta con salto de línea desalinea todo lo de abajo, y
-                # entonces el test falla por formato en vez de por sentido.
                 "    print(' '.join(r.split()))",
             )
         finally:
@@ -346,13 +341,6 @@ class TestEnVivo:
         assert all(c.strip() for c in causas)
         assert not any("la llamada falló" in c for c in causas)
 
-        # Lo que este test tiene que probar es que cada respuesta salió de SU
-        # trozo, no qué sinónimo eligió el modelo. La causa del medio se dice de
-        # seis maneras distintas ("partida arancelaria", "reinspección física",
-        # "error de partida") y todas están bien; fijar una lista de palabras
-        # hace que el test falle por vocabulario y no por sentido. Así que se
-        # afirma lo que no cambia: la primera habla del paro, la última del
-        # incendio, y la del medio no habla de ninguna de las dos.
         assert any(r in causas[0] for r in ("paro", "estibador", "huelga"))
         assert "incendio" in causas[2]
         assert not any(r in causas[1] for r in ("paro", "estibador", "huelga", "incendio"))

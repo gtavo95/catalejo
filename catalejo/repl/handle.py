@@ -25,10 +25,8 @@ class Handle:
     """
 
     var: str = "ctx"
-    schema: str = ""  # una línea de qué hay adentro
-    size: str = ""  # legible por humanos, "4.2M tokens"
-    # Qué builtins tiene a mano. El default describe el Workspace de este módulo;
-    # otro Environment pasa la suya.
+    schema: str = ""
+    size: str = ""
     tools: str = field(default=HERRAMIENTAS)
 
 

@@ -65,7 +65,7 @@ class TestGrounded:
         out = await grounded()(seen)
 
         assert out.fails == (SIN_FUNDAMENTO,)
-        assert out.vote is Status.QUIET  # deja que el DONE del executor mande
+        assert out.vote is Status.QUIET
         assert out.said == ()
 
 
@@ -113,7 +113,7 @@ class TestLaFabricacion:
         out = await agente(Log(said=(dicho("dame el índice", Role.USER),)))
 
         assert out.vote is Status.DONE
-        assert out.fails == ()  # el sistema dice que salió bien
+        assert out.fails == ()
 
     async def test_con_grounding_lo_manda_a_consultar(self) -> None:
         model = Stub(
@@ -141,7 +141,7 @@ class TestLaFabricacion:
         out = await self.agente(model, ws)(Log(said=(dicho("dame el índice", Role.USER),)))
 
         assert out.fails == (SIN_FUNDAMENTO,)
-        assert out.vote is Status.DONE  # sale, pero sale con la etiqueta puesta
+        assert out.vote is Status.DONE
         assert out.reads == 0
 
     async def test_no_molesta_a_una_corrida_normal(self) -> None:

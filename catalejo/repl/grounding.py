@@ -65,9 +65,9 @@ def grounded(var: str = "ctx") -> Cell:
             return ZERO
         ultimo = seen.said[-1]
         if ultimo.role is not Role.ASSISTANT or extract_code(ultimo.text):
-            return ZERO  # sigue trabajando: no opino
+            return ZERO
         if seen.reads > 0:
-            return ZERO  # consultó algo: no opino
+            return ZERO
         if aviso in seen.said:
             return Log(fails=(SIN_FUNDAMENTO,))
         return Log(said=(aviso,), vote=Status.CONTINUE)

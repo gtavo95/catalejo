@@ -42,8 +42,6 @@ from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
 CODIGOS = ["E-102", "E-417", "E-500", "W-31"]
 PRODUCTOS = ["tostadora", "licuadora", "cafetera", "batidora"]
 
-# Tres temas de queja con varias redacciones cada uno. Agrupar paráfrasis es
-# lectura, no búsqueda: por eso esta pregunta necesita un modelo.
 QUEJAS = [
     "se apaga sola a los pocos minutos de estar andando",
     "deja de funcionar sin aviso despues de un rato encendida",
@@ -69,8 +67,6 @@ PREGUNTA_RECURSE = (
 
 def corpus(n: int = 60_000, semilla: int = 7) -> str:
     rng = random.Random(semilla)
-    # Stream aparte para las quejas, así los números de la primera pregunta no se
-    # mueven cuando se toca esta lista.
     rq = random.Random(semilla + 1)
     lineas = []
     for i in range(n):

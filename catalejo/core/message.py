@@ -22,6 +22,4 @@ class Message:
     text: str
 
 
-# Una tupla, no una lista: el State es inmutable de verdad y ninguna célula
-# puede quedarse con un alias de la historia del engine.
 type Conversation = tuple[Message, ...]

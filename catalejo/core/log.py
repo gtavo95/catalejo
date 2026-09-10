@@ -48,10 +48,10 @@ class Status(IntEnum):
     HALT.
     """
 
-    QUIET = 0  # sin opinión, el neutro
-    DONE = 1  # esta célula no tiene nada más que agregar
-    CONTINUE = 2  # esta célula quiere otro paso
-    HALT = 3  # se terminó acá, y no por haber contestado
+    QUIET = 0
+    DONE = 1
+    CONTINUE = 2
+    HALT = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,8 +77,6 @@ class Log:
     reads: int = 0
 
 
-# El Log vacío: no dijo nada, no falló en nada, no votó nada, no gastó nada. Es
-# el neutro de merge.
 ZERO = Log()
 
 
@@ -114,8 +112,6 @@ def normal(log: Log) -> Log:
     return merge(ZERO, log)
 
 
-# Una regla de borde: qué sale de un alcance. No es una célula ni una fusión,
-# es lo que se le hace a un Log una sola vez, cuando cruza hacia afuera.
 type Rule = Callable[[Log], Log]
 
 type Channel = Literal["said", "fails", "vote", "spent", "reads"]

@@ -28,14 +28,11 @@ def extract_code(texto: str) -> str:
     """
     abre = texto.find(FENCE)
     if abre < 0:
-        return ""  # sin cerca: prosa, o sea una respuesta final
+        return ""
     resto = texto[abre + len(FENCE) :]
     cierra = resto.find(FENCE)
     if cierra < 0:
-        return ""  # cerca sin cerrar: nunca correr medio bloque
-    # Saca la etiqueta de lenguaje de la línea de apertura (```python), pero solo
-    # si ese salto de línea está ANTES del cierre. Si no, un bloque de una línea
-    # seguido de prosa se parsea al revés.
+        return ""
     nl = resto.find("\n")
     if 0 <= nl < cierra:
         resto = resto[nl + 1 :]
@@ -96,8 +93,6 @@ def executor(env: Environment) -> Cell:
             said=(Message(Role.USER, render(out)),),
             vote=Status.CONTINUE,
             spent=out.spent,
-            # Volvió algo: el modelo tiene de dónde sacar lo que diga después. Un
-            # snippet que no imprimió nada no le enseñó nada, así que no cuenta.
             reads=1 if out.stdout else 0,
         )
 

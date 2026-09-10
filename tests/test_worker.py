@@ -144,7 +144,6 @@ class TestWorker:
 
         await worker(model, Handle(), keep_recent=2)(seen)
 
-        # sistema + pregunta + aviso + los dos últimos
         assert len(model.visto[0]) == 5
 
 
