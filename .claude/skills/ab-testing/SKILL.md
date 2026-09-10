@@ -101,10 +101,17 @@ El `Log` ya trae los seams. Hay que leer más de una columna:
 - **`out.fails`** dice si se cortó. Una corrida que murió por un turno vacío es una **muestra
   perdida**, no un fallo de calidad del tratamiento. Contarla como fallo sesga el A/B.
 
-**Confound que este repo todavía no puede ver: la caché.** `gemini.py` lee solo `totalTokenCount`.
-En `exp` el −44% del worker GLM era **enteramente** su caché de prompt (70% de hit) y sin caché el
-A/B salía plano. Hasta que el adaptador exponga `cachedContentTokenCount`, una baja de costo entre
-corridas separadas en el tiempo no es atribuible.
+**El confound de la caché, medido y descartado por ahora.** En `exp` el −44% del worker GLM era
+**enteramente** su caché de prompt (70% de hit), y sin caché el A/B salía plano. Acá no pasa:
+volcando el `usageMetadata` crudo de 15 llamadas en 3 corridas de `agro.py`, incluidas 6 con el
+prompt byte a byte idéntico, **`cachedContentTokenCount` no aparece nunca**. El prompt de la raíz
+va de 1.372 a 14.010 tokens, que es lo que se espera de un RLM donde el corpus no entra, y queda
+debajo del piso de la caché implícita.
+
+O sea que hoy una baja de costo sí es atribuible, y no hace falta el canal. Lo que invalida esto es
+que el preámbulo engorde: si el prompt de la raíz cruza el piso, el confound vuelve y ahí sí hay que
+exponer el campo. En OpenAI el equivalente es `usage.prompt_tokens_details.cached_tokens`, sin
+medir todavía.
 
 ## El veredicto
 
@@ -154,9 +161,14 @@ hace que la decisión salga mal con números impecables.
 2. **El régimen es estocástico y flipa por corrida.** Dos fuentes: el turno vacío del proveedor
    (6/12) y qué patrón se le ocurre escribir al modelo. `temperature` va en 1.0 porque bajarla en
    los Gemini 3 los empeora, así que la varianza no se apaga, se muestrea.
-3. **El preámbulo no es un lugar neutro donde poner texto.** El mismo párrafo da 6/12 en el turno
-   del usuario y 0/12 en el preámbulo. No sé el mecanismo. Antes de agregar texto al preámbulo,
-   medilo.
+3. **El preámbulo no es un lugar neutro donde poner texto, y la puntuación cuenta.** El mismo
+   párrafo da 6/12 en el turno del usuario y 0/12 en el preámbulo. Peor: en `agro.py`, cambiar
+   "el dato duro: `crops`, `targets`..." por "el dato duro. Ese bloque trae `crops`..." movió el
+   turno vacío de 0/13 a 6/6. Dos puntos seguidos de una lista de identificadores entre backticks,
+   nada más. Es la misma familia que `FUENTE: <ruta>`, que daba 1/10 con ángulos y 10/10 sin ellos.
+   No sé el mecanismo en ninguno de los dos. La regla práctica es que una lista de campos en el
+   preámbulo va como oración y no colgada de dos puntos, y que antes de reescribir esa línea se
+   mide.
 4. **La R suele estar dormida.** `agro.py` y `evals.py` corren con `depth=0`, así que `rlm` ni
    existe en el namespace. Si `bridge.calls` es cero, la palanca que ibas a medir sobre la
    delegación no se ejerció y el Δ que veas es de otra cosa.

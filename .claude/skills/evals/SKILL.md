@@ -154,12 +154,26 @@ contrato que acabás de acordar, el bug vive en el criterio. Y al corregirlo, el
 honestidad es que **el baseline siga fallando** y los centinelas no se muevan: así probás que
 endureciste la vara y no que la amañaste a favor de tu tratamiento.
 
-## Lo que falta
+## Las dos suites
 
-- **El eval agronómico.** `preguntas.tsv` son 20 preguntas comerciales y `agro.py` no tiene suite.
-  Hoy "lo bajamos de 108k a 10k tokens" es una afirmación sobre tokens sin ninguna prueba de que
-  las respuestas siguieron siendo correctas. Con ocho o diez casos alcanza y ya se saben cuáles:
-  una dosis por manzana de las 23 fichas que la tienen, una de las 15 que no, un cultivo no
-  certificado, una plaga que no está en el catálogo. Van en el bundle, no acá.
-- **`cachedContentTokenCount`** en el adaptador de Gemini, para descartar el confound de caché en
-  vez de ignorarlo.
+`preguntas.tsv` son 20 preguntas comerciales que contesta el agente de la wiki. `agro.tsv` son 9
+agronómicas que contesta el asesor de `agro.py`, con su corpus de dos carpetas, su contrato y su
+índice de fichas en el REPL. Son dos programas, así que medirlos con la misma suite diría poco de
+los dos: el ahorro de 108k a 10.4k tokens se midió sobre `agro.py`, y confirmarlo pide correr
+`agro.py`.
+
+El hecho que ordena media suite agronómica: **la dosis por manzana vive solo en el texto de
+`# Ficha`.** El bloque `# Agronomía` en JSON modela únicamente `basis: "ha"`, así que el índice
+`productos` que el REPL le da al modelo no la tiene y hay que ir al texto con grep. Dos casos
+apuntan ahí, uno donde el valor por manzana está escrito y otro donde no.
+
+La primera corrida ya pagó la suite. El centinela de la plaga ausente encontró que, preguntando por
+una plaga que ni las fichas ni la ontología nombran, el asesor **se inventa tres fichas que no
+existen** en vez de decir que no la cubre. Lo agarró `inventada()`, sin juez y sin humano.
+
+## Lo que falta
+- **El canal `cached`**, y solo si hace falta. Se midió: en este stack Gemini nunca informa
+  `cachedContentTokenCount`, porque el prompt de la raíz no llega al piso de la caché implícita. El
+  detalle está en `ab-testing`. Vuelve a la lista el día que el preámbulo engorde.
+- **`prompt_tokens_details.cached_tokens` en OpenAI**, que es lo mismo del otro lado y sigue sin
+  medirse porque el adaptador nunca habló con la API real.
