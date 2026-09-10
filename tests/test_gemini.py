@@ -113,6 +113,39 @@ class TestFromResponse:
         with pytest.raises(GeminiError, match="vacío"):
             from_response({"candidates": [{"content": {"parts": [{"text": "  "}]}}]})
 
+    def test_el_turno_sin_texto_lo_dice(self) -> None:
+        """`MALFORMED_FUNCTION_CALL` a secas manda a buscar una tool call que este
+        repo nunca declara. Lo que llega de verdad es una sola parte con la firma
+        del razonamiento y el texto vacío: el modelo pensó y no dijo nada.
+
+        Aparece por rachas según qué tenga el preámbulo, y el mensaje es lo único
+        que convierte una tarde de bisección en una línea de log.
+        """
+        payload = {
+            "candidates": [
+                {
+                    "content": {"parts": [{"thoughtSignature": "xxx", "text": ""}]},
+                    "finishReason": "MALFORMED_FUNCTION_CALL",
+                }
+            ]
+        }
+
+        with pytest.raises(GeminiError, match="solo razonamiento, sin texto"):
+            from_response(payload)
+
+    def test_un_corte_con_texto_no_lo_dice(self) -> None:
+        """Si el turno trae texto, el corte es otra cosa y decir lo contrario
+        mandaría a bisecar el preámbulo por nada."""
+        payload = {
+            "candidates": [
+                {"content": {"parts": [{"text": "media frase"}]}, "finishReason": "MAX_TOKENS"}
+            ]
+        }
+
+        with pytest.raises(GeminiError) as e:
+            from_response(payload)
+        assert "solo razonamiento" not in str(e.value)
+
     def test_separa_el_corte_que_se_repite_del_que_no(self) -> None:
         """MAX_TOKENS con el mismo prompt vuelve a pasar; MALFORMED_FUNCTION_CALL
         es el parser de ellos y a la segunda suele andar."""
@@ -268,7 +301,6 @@ class TestConElWorker:
         assert out.said[-1].text == "24 meses."
         assert out.spent == 250
         assert out.fails == ()
-        # el segundo pedido ya lleva la salida del REPL como turno de usuario
         segundo = cuerpo(vistos[1])["contents"]
         assert "garantia: 24 meses desde la compra" in json.dumps(segundo, ensure_ascii=False)
 

@@ -11,7 +11,6 @@ existe, y el worker solo sabe que un modelo puede contestar o puede reventar.
 
 from __future__ import annotations
 
-import asyncio
 import os
 from typing import Any, cast
 
@@ -20,39 +19,25 @@ import httpx
 from catalejo.core import Conversation, Message, Role
 
 from .model import Reply
+from .reintento import ProviderError, con_reintentos
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
 MODELO = "gemini-3.8-flash"
 
-# Fallas que suelen ser del momento: cuota por minuto, capacidad, un 500 suelto.
-# Un 400 es el pedido mal armado y reintentarlo es quemar tiempo.
 TRANSITORIOS = frozenset({429, 500, 502, 503, 504})
 
 
-# Cortes que dependen del momento y no del prompt. MALFORMED_FUNCTION_CALL es el
-# parser del servidor tropezando con su propia salida, y aparece aunque uno no
-# use tools: en una corrida de 20 preguntas mató dos en la primera llamada.
-# OTHER es un corte sin especificar del lado de ellos. Los demás (MAX_TOKENS,
-# SAFETY, RECITATION) son deterministas: con el mismo prompt vuelve a pasar.
 CORTES_TRANSITORIOS = frozenset({"MALFORMED_FUNCTION_CALL", "OTHER"})
 
 
-class GeminiError(RuntimeError):
+class GeminiError(ProviderError):
     """Lo que volvió de la API no sirve como turno.
 
-    El worker la convierte en `Fail("model", ...)` con voto QUIET, así que el
-    loop corta con el motivo a la vista en vez de seguir pidiéndole texto a un
-    proveedor que no está contestando.
-
-    `transitorio` dice si reintentar el MISMO pedido tiene chance de andar. Es
-    una propiedad del error y no del transporte: un 503 y un turno cortado por
-    MALFORMED_FUNCTION_CALL llegan por caminos distintos y los dos se reintentan,
-    un 400 y un corte por SAFETY no.
+    Hereda de `ProviderError`, que es lo que mira `con_reintentos`. Lo único que
+    agrega es el nombre, y el nombre es la mitad del mensaje de error: el worker
+    formatea `type(e).__name__`, así que un `Fail` dice contra qué proveedor se
+    estaba hablando sin que nadie lo escriba a mano.
     """
-
-    def __init__(self, mensaje: str, *, transitorio: bool = False) -> None:
-        super().__init__(mensaje)
-        self.transitorio = transitorio
 
 
 def to_request(conv: Conversation) -> dict[str, Any]:
@@ -81,6 +66,21 @@ def to_request(conv: Conversation) -> dict[str, Any]:
     return cuerpo
 
 
+def _solo_razonamiento(partes: list[dict[str, Any]]) -> str:
+    """Si el turno vino sin texto, decirlo. Un `MALFORMED_FUNCTION_CALL` a secas no enseña.
+
+    Este repo no declara herramientas, así que el nombre del corte no explica nada y
+    manda a buscar una tool call que no existe. Lo que llega de verdad es una sola
+    parte con `thoughtSignature` y `text` vacío: el modelo pensó y no dijo nada.
+
+    Aparece por rachas según qué tenga el preámbulo, y el mensaje es lo único que
+    convierte una tarde de bisección en una línea de log que dice qué pasó.
+    """
+    if not partes or any(p.get("text", "").strip() for p in partes if not p.get("thought")):
+        return ""
+    return " (el modelo devolvió solo razonamiento, sin texto)"
+
+
 def from_response(payload: dict[str, Any]) -> Reply:
     """Saca el turno y el gasto, o explica por qué no hay turno.
 
@@ -105,13 +105,14 @@ def from_response(payload: dict[str, Any]) -> Reply:
         raise GeminiError(f"la API no devolvió respuesta: {razon}")
     candidato = candidatos[0]
     fin = candidato.get("finishReason", "STOP")
-    if fin != "STOP":
-        raise GeminiError(f"turno cortado por {fin}", transitorio=fin in CORTES_TRANSITORIOS)
     partes = (candidato.get("content") or {}).get("parts") or []
+    if fin != "STOP":
+        raise GeminiError(
+            f"turno cortado por {fin}{_solo_razonamiento(partes)}",
+            transitorio=fin in CORTES_TRANSITORIOS,
+        )
     texto = "".join(p.get("text", "") for p in partes if not p.get("thought"))
     if not texto.strip():
-        # Con finishReason STOP y cero texto no hay nada que corregir en el
-        # pedido: es la API devolviendo un turno hueco. Se pide de nuevo.
         raise GeminiError("el modelo contestó vacío", transitorio=True)
     gasto = int((payload.get("usageMetadata") or {}).get("totalTokenCount", 0))
     return Reply(Message(Role.ASSISTANT, texto), spent=gasto)
@@ -162,28 +163,17 @@ class Gemini:
     async def complete(self, conv: Conversation) -> Reply:
         """Un turno, reintentando lo que sea del momento.
 
-        El reintento envuelve el pedido Y el parseo, y eso es el arreglo. Antes
-        vivía adentro de `_post`, que solo ve el código HTTP: un 200 con un turno
-        cortado por MALFORMED_FUNCTION_CALL salía derecho a `Fail` y el loop
-        cortaba con cero turnos. Quien sabe si vale la pena repetir no es el
-        transporte, es el error.
+        El reintento envuelve el pedido y el parseo, y por qué eso importa está
+        contado en `reintento.py`.
         """
         cuerpo = to_request(conv)
         if self._config:
             cuerpo["generationConfig"] = self._config
-        espera = self._backoff
-        ultimo = ""
-        for intento in range(self._retries + 1):
-            try:
-                return from_response(await self._post(cuerpo))
-            except GeminiError as e:
-                if not e.transitorio:
-                    raise
-                ultimo = str(e)
-            if intento < self._retries:
-                await asyncio.sleep(espera)
-                espera *= 2
-        raise GeminiError(f"la API no respondió ({self._retries + 1} intentos). {ultimo}")
+
+        async def pedir() -> Reply:
+            return from_response(await self._post(cuerpo))
+
+        return await con_reintentos(pedir, retries=self._retries, backoff=self._backoff)
 
     async def _post(self, cuerpo: dict[str, Any]) -> dict[str, Any]:
         """Un solo intento. Marca lo que se puede repetir y deja que decida arriba."""
@@ -193,7 +183,6 @@ class Gemini:
         except httpx.TransportError as e:
             raise GeminiError(f"{type(e).__name__}: {e}", transitorio=True) from e
         if r.status_code != 200:
-            # Un 400 es el pedido mal armado y repetirlo es quemar tiempo.
             raise GeminiError(
                 f"HTTP {r.status_code}: {r.text[:300]}",
                 transitorio=r.status_code in TRANSITORIOS,
