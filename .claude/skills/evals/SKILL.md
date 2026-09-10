@@ -1,0 +1,149 @@
+---
+name: evals
+description: >-
+  La suite de calidad y el gate de regresión. Dónde vive un caso y por qué (regla: en el bundle,
+  nunca en este repo), qué columna lleva y cuál NO, cómo se arma el subset estratificado con sus
+  centinelas, el gate por capas de gratis a caro, y por qué el criterio puede mentir. Úsala al
+  agregar o cambiar un caso, antes de mergear algo que toca el camino del turno, al leer un ✗, o
+  al decidir cuánto eval correr. Para decidir si un cambio se embarca, `ab-testing`.
+---
+
+# Evals de catalejo
+
+Portada de `~/code/chatbots/exp`, donde el eval mide un servicio en producción contra la wiki de
+cada inquilino. Acá el corpus es un bundle local y el juez es código, así que la mitad cara
+desaparece y la disciplina no.
+
+## La regla: los casos viven en el bundle
+
+`okf/successo-okf/evals/preguntas.tsv`, nunca en este repo.
+
+Un caso es **curaduría**, igual que una página de producto: lo escribe quien conoce el dominio y
+vale por eso. El motor es genérico y el bundle no. Si el bundle cambia de manos, los casos se van
+con él y catalejo sigue sirviendo para otro corpus sin arrastrar veinte preguntas sobre
+bioinsumos. Es la misma regla que en `exp`, donde los casos migraron del repo a `<wiki>/evals/`
+por este motivo exacto.
+
+Corolario que ya está implementado y no hay que romper: **el corpus EXCLUYE `evals/`**. `corpus()`
+lo saltea junto con `.claude/`. Meter las respuestas adentro del contexto sería hacerse trampa al
+solitario.
+
+Lo que sí vive acá es la **bitácora** (`bitacora.tsv`), porque mide el motor y no los datos del
+cliente. Casos allá, mediciones acá.
+
+## Qué lleva un caso
+
+Cinco columnas separadas por tabulador, la primera línea empieza con `#`:
+
+| columna | qué lleva |
+| :-- | :-- |
+| `id` | kebab, estable. Es con lo que se reporta un caso que falla |
+| `pregunta` | como la escribiría el cliente, no como la indexa el buscador |
+| `paginas` | rutas separadas por espacio, o `ninguna` cuando la respuesta correcta es que no hay |
+| `seccion` | de qué parte de la página sale el dato |
+| `criterio` | qué tiene que hacer la respuesta, y sobre todo qué NO |
+
+**El criterio no lleva el valor.** Un eval que dice "contesta Q48" es una segunda copia del dato:
+el día que suba la tarifa, la página se actualiza y el eval sigue exigiendo el monto viejo. Se
+asegura a qué página llega y de qué sección sale; el valor lo pone la página. Es la regla del
+bundle y también protege contra el modo de falla que `exp` pagó caro: un ground truth envenenado
+fabrica fallos falsos. Ahí `price_min=0` era un bug del join y el eval marcó "precio inventado"
+cinco respuestas que daban el precio **correcto**.
+
+**Un caso vale si alguien lo vio fallar.** Ninguna de las veinte es "¿qué es Royano?": eso lo pasa
+cualquier recuperación y no mide nada. Los que valen son los que ya fallaron atendiendo, no los
+que se inventan leyendo la página.
+
+## Los estratos
+
+La diversidad vive en la suite, no en repetir. Los de hoy, según el bundle:
+
+- **el nombre local**, que es otra palabra en otro país (TROYANO es Royano, 26 páginas con tabla)
+- **la ambigüedad entre dos páginas legítimas** (el hierro EDDHA son dos productos y los separa la vía)
+- **los descontinuados**, que no tienen precio y por eso invitan a inventarlo
+- **lo que no está en el bundle** y no hay que rellenar
+- **las trampas de una página** (el pegamento de NoviTrap no está declarado y el de NoviGlue sí)
+- **las reglas de empresa**, donde el borde es el caso (una factura de Q1.500 exactos paga envío)
+
+Las cuatro trampas puras son los **centinelas**: producto descontinuado, sección vacía, producto
+sin página, producto que no está en el catálogo. Los cuatro invitan a lo mismo, que es el modo de
+falla que importa: **no encontrar y contestar igual**.
+
+## Cuánto eval correr
+
+**El default es subset estratificado a n=1, no las 20 × n=3.** El subset se arma con:
+
+- **≥1 caso por estrato.** El estrato que el cambio NO toca se incluye igual: ese es el control.
+- **+ los cuatro centinelas.** Si uno regresa, el cambio se bloquea aunque el resto gane.
+- **+ los casos que el cambio ataca.**
+
+El filtro por id ya existe, son los argumentos posicionales:
+
+```sh
+uv run evals.py                    # los 20; con un id que no existe, los lista todos
+uv run evals.py <id> <id> <id>     # el subset
+uv run evals.py <id>               # uno solo, con la transcripción entera
+```
+
+Los ids no se escriben acá ni en `evals.py`: viven en el TSV porque nombran productos de un
+cliente.
+
+**La confirmación es targeted, nunca la suite entera.** Se profundiza a n≥3 **solo los casos que
+flipan o quedan en la frontera**. Repetir un caso estable tres veces es gasto muerto: lo único que
+n compra es varianza intra-caso. La escalera de n y por qué n=1 es suerte están en `ab-testing`.
+
+## El gate, de gratis a caro
+
+Heredado de `exp`, donde las dos primeras capas son deterministas y cazan la rotura silenciosa
+antes de gastar un centavo. Acá se traduce limpio:
+
+| capa | qué | costo |
+| :-: | :-- | :-- |
+| **0** | `uv run mypy`, que revisa puertos, firmas y exhaustividad | $0 |
+| **1** | `uv run pytest -q`, el álgebra, el REPL y los adaptadores contra transporte falso | $0 |
+| **2** | `uv run evals.py <subset>`, calidad contra el bundle, con llamadas reales | paga |
+
+Las capas 0 y 1 corren sin red: los tests de adaptador usan `httpx.MockTransport` y los del
+álgebra usan `Stub`. Si la capa 2 falla, primero descartá que sea la capa 0 o 1 disfrazada.
+
+**El gate es cero regresiones.** Para cada ✗ la pregunta es de regresión: ¿el baseline lo pasaba?
+Si sí, bloquea. Si ya fallaba, es pre-existente, no bloquea este cambio, pero se anota.
+
+Un ✗ que viene de `out.fails` (turno vacío del proveedor) **no es una regresión de calidad**: es
+una muestra perdida. Re-corré ese caso antes de contarlo.
+
+## El criterio puede mentir
+
+`evals.py` no tiene juez LLM, y eso es una ventaja y un límite.
+
+La ventaja: `acierta()` es substring y `inventada()` es pertenencia a un conjunto. Exactas,
+gratis, sin calibración. La mitad cara del eval de `exp` acá cuesta cero, así que profundizar un
+flipper a n=6 es solo el precio de las corridas del agente.
+
+El límite, y hay que decirlo con todas las letras: **la máquina califica la CITA, no la
+respuesta.** `acierta()` mira si la página esperada aparece en el texto. El `criterio`, que es
+donde vive "no inventar una dosis", lo califica un humano leyendo la salida, y por eso `main()`
+imprime el criterio y la respuesta de cada caso que falla. Un ✗ verde por la cita y malo por el
+criterio existe y la máquina no lo ve.
+
+`inventada()` es la excepción y vale entender por qué: el modelo SÍ leyó, así que `grounded` lo
+deja pasar, y aun así la ruta que declara puede no existir. Una cita es una afirmación sobre un
+conjunto conocido, y eso se verifica con código. Es el equivalente determinista del caso
+adversarial de `exp`, donde metían respuestas fluidas pero falsas para ver si el juez las dejaba
+pasar.
+
+**Antes de creerle a un ✗, leé la respuesta cruda, no el puntaje.** Si el criterio contradice el
+contrato que acabás de acordar, el bug vive en el criterio. Y al corregirlo, el chequeo de
+honestidad es que **el baseline siga fallando** y los centinelas no se muevan: así probás que
+endureciste la vara y no que la amañaste a favor de tu tratamiento.
+
+## Lo que falta
+
+- **El eval agronómico.** `preguntas.tsv` son 20 preguntas comerciales y `agro.py` no tiene suite.
+  Hoy "lo bajamos de 108k a 10k tokens" es una afirmación sobre tokens sin ninguna prueba de que
+  las respuestas siguieron siendo correctas. Con ocho o diez casos alcanza y ya se saben cuáles:
+  una dosis por manzana de las 23 fichas que la tienen, una de las 15 que no, un cultivo no
+  certificado, una plaga que no está en el catálogo. Van en el bundle, no acá.
+- **`--repeats N` en `evals.py`.** Sin repeticiones no hay n, ni deepen de flippers, ni `pass^k`.
+- **`cachedContentTokenCount`** en el adaptador de Gemini, para descartar el confound de caché en
+  vez de ignorarlo.
