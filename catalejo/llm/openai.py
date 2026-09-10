@@ -17,6 +17,15 @@ devuelve turnos vacíos por rachas es un piso de fiabilidad que no se sube desde
 acá, y tener el segundo adaptador convierte "esperemos que hoy conteste" en
 cambiar una línea. Que las dos clases tomen los mismos parámetros no es
 casualidad, es el requisito para que ese cambio sea de una línea.
+
+# Cuál modelo
+
+`gpt-5.6-luna` con esfuerzo bajo, que es el default del worker en `exp` desde su
+A/B contra `gpt-5.4-mini`. Allá luna obliga a la Responses API porque
+chat/completions devuelve 400 si se le pide razonamiento junto con function
+tools. Acá ese choque no existe: este repo no declara herramientas en ninguna
+parte, así que luna razona por chat/completions y `reasoning_effort` viaja como
+un campo más.
 """
 
 from __future__ import annotations
@@ -32,7 +41,7 @@ from .model import Reply
 from .reintento import ProviderError, con_reintentos
 
 BASE = "https://api.openai.com/v1"
-MODELO = "gpt-5.1"
+MODELO = "gpt-5.6-luna"
 
 TRANSITORIOS = frozenset({408, 429, 500, 502, 503, 504})
 
