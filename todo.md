@@ -19,27 +19,9 @@ modelo ve no cambia salvo en un timeout, y hay cero timeouts medidos.
 
 Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es el lado no confiable
 y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la inyección;
-eso es el punto 2.
+para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 4.
 
-## 2. La cita contra el conjunto cerrado, adentro del agente
-
-`inventada()` vive en `evals.py`, o sea que califica después y no frena nada. El modo de falla que
-persigue todo el repo (`zompopo-fuera-de-catalogo`: tres fichas inventadas, beaveria-90,
-isaria-forte, metarhizium-50) lo agarra el eval, no el agente.
-
-El docstring de `grounding.py` dice que para esto haría falta un juez. Se equivoca, y `inventada()`
-es la prueba: una cita es una afirmación sobre un conjunto conocido y se verifica con código,
-exacto y gratis. La célula nueva va al lado de `grounded(var)`, con el mismo mecanismo: avisa una
-vez votando CONTINUE con las rutas que no existen, y si el modelo insiste lo deja salir con un
-`Fail`.
-
-Segundo escalón, más fuerte: validar contra `ontologia/`, que son vocabularios cerrados de verdad
-(`objetivos.md` tiene 71 entradas con nombre común, científico y alias). "zompopo" no aparece ni una
-vez en el bundle, así que la respuesta correcta era decir que el catálogo no lo cubre, y eso es
-chequeable sin modelo. El path chequea rutas citadas; la ontología chequea el nombre que el modelo
-usa en prosa aunque no cite nada.
-
-## 3. La cabecera `=== ruta ===` cuenta como hit
+## 2. La cabecera `=== ruta ===` cuenta como hit
 
 `grep` recorre todas las líneas y la cabecera es una línea más que además contiene la ruta, así que
 un patrón que nombra un producto o una carpeta casa contra el delimitador. Medido sobre el bundle:
@@ -52,9 +34,12 @@ bookkeeping que ya detecta la cabecera con `CABECERA`. Barato, y cambia el núme
 así que lleva fila en la bitácora.
 
 **Va antes que cualquier A/B nuevo.** Si no, `max_hits` y `doc=` se miden contra totales inflados y
-hay que re-baselinear dos veces.
+hay que re-baselinear dos veces. Ya hay uno esperando: `--citas` (palanca `cita_cerrada`, arms
+`sin_cita`/`con_cita`) está cableado y con tests, y se mide contra el baseline que salga de acá.
+Con luna el Δ esperado es cero tokens y cero regresiones: zompopo ya pasa 3/3 sin la célula, que
+es seguro y no cura.
 
-## 4. El grep que afloja el patrón cuando devuelve cero
+## 3. El grep que afloja el patrón cuando devuelve cero
 
 El cero es el estado donde el modelo tiene menos información y más incentivo a rellenar, y es
 exactamente donde se inventó las tres fichas. Hoy `grep` dice "0 líneas casan" y lo suelta ahí.
@@ -64,6 +49,21 @@ se puede copiar tal cual, porque ensanchar en silencio es la misma mentira que e
 regla tiene que ser: ensanchar, decir con todas las letras qué se probó, y cerrar con la frase que
 evita la invención. "0 con 'zompopo', 0 con 'zompopos', 0 con 'hormiga arriera'. El catálogo no
 tiene esa plaga."
+
+## 4. La ontología como dato, no como chequeo de prosa
+
+La cita contra el conjunto cerrado ya está (`citas.py`): las rutas que la respuesta declara
+tienen que existir. Lo que no mira es la prosa, y no puede: una respuesta a "¿qué uso para el
+zompopo?" va a decir "zompopo" porque la pregunta lo dice, y lo que está mal es recomendar un
+producto para eso, que no es un string. Un chequeo determinístico de nombres en prosa contra
+`ontologia/` no está bien definido.
+
+Lo que sí es determinístico y barato: darle la ontología como dato. `objetivos` en `extra`,
+parseado de las tablas `| id | etiqueta | padre | alias |` (71 entradas), más una línea del
+`CONTRATO`: "si la plaga no está en `objetivos`, decilo antes de recomendar". El modelo ya puede
+hacer `grep(catalogo, 'zompopo')` y recibir cero porque `ontologia/` está en el corpus; esto le da
+el conjunto cerrado para que el cero sea una afirmación y no una ausencia. Es palanca de prompt y
+builtin, lleva A/B, y va después de la cabecera como todos.
 
 ## 5. El two-phase para rescatar el `doc=`
 

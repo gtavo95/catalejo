@@ -67,7 +67,6 @@ caso y correría cero casos.
 from __future__ import annotations
 
 import asyncio
-import re
 import subprocess
 import sys
 import time
@@ -79,11 +78,9 @@ from pathlib import Path
 import agro
 from catalejo.core import Cell, Log, Message, Role
 from catalejo.llm import Provider
-from catalejo.repl import Handle, Workspace, drive, recurse
+from catalejo.repl import Handle, Workspace, drive, inventada, recurse, rutas
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
-
-CABECERA = re.compile(r"^=== (.+) ===$")
 
 CITA = (
     "\n\nAl final de tu respuesta agrega una línea `FUENTE: ruta/al/archivo.md` con el "
@@ -180,10 +177,11 @@ def montaje(argv: list[str]) -> Montaje:
     """
     if "--agro" in argv:
         plan = "--plan" in argv
+        citas = "--citas" in argv
         return Montaje(
             tsv="agro.tsv",
             corpus=agro.corpus,
-            montar=lambda texto, modelo: agro.armar(texto, modelo, ver=False, plan=plan),
+            montar=lambda texto, modelo: agro.armar(texto, modelo, ver=False, plan=plan, citas=citas),
             pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan),
         )
     recursivo = "--recurse" in argv
@@ -235,46 +233,6 @@ def final(out: Log) -> str:
         if m.role is Role.ASSISTANT and "```" not in m.text:
             return m.text.strip()
     return "(sin respuesta en prosa)"
-
-
-def rutas(texto: str) -> set[str]:
-    """Las rutas que EXISTEN en el corpus que se le dio al modelo.
-
-    Salen de las cabeceras `=== ruta ===` del propio texto y no de un segundo
-    recorrido del bundle, así el conjunto es exactamente lo que el modelo pudo
-    leer. Importa con `--agro`, donde el corpus son dos carpetas: una cita a un
-    archivo que existe en el bundle pero no en el corpus es tan inventada como
-    una a un archivo que no existe en ninguna parte.
-    """
-    return {m.group(1) for m in (CABECERA.match(l) for l in texto.splitlines()) if m}
-
-
-def citadas(texto: str) -> tuple[str, ...]:
-    """Todas las rutas que la respuesta declara como fuente.
-
-    Todas y no la última, porque el CONTRATO de `agro.py` pide una línea
-    `FUENTE:` por cada archivo del que salió un dato. Mirando solo la última, una
-    ruta fabricada en la primera pasaba sin que nadie la viera, que es justo lo
-    que estas dos funciones existen para ver.
-    """
-    return tuple(
-        linea.split(":", 1)[1].strip().strip("`").lstrip("/")
-        for linea in texto.splitlines()
-        if linea.strip().upper().startswith("FUENTE:")
-    )
-
-
-def inventada(texto: str, reales: set[str]) -> tuple[str, ...]:
-    """Las rutas citadas que no existen, si las hay.
-
-    Es el agujero que `reads` no tapa y no hace falta un juez para verlo: el
-    modelo SÍ leyó, así que la célula de grounding lo deja pasar, y aun así la
-    fuente que declara puede no existir. Una cita es una afirmación sobre un
-    conjunto conocido, y eso se verifica con código, que es exacto y gratis.
-    """
-    return tuple(
-        r for r in citadas(texto) if r and r.lower() != "ninguna" and r not in reales
-    )
 
 
 def acierta(caso: Caso, texto: str) -> bool:

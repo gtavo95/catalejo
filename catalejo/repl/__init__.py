@@ -1,3 +1,4 @@
+from .citas import citada, citadas, inventada, rutas
 from .contenedor import Contenedor
 from .drive import drive
 from .environment import Environment, Output, Stub
@@ -24,17 +25,21 @@ __all__ = [
     "Verbos",
     "Workspace",
     "answer",
+    "citada",
+    "citadas",
     "drive",
     "executor",
     "extract_code",
     "grep",
     "grounded",
+    "inventada",
     "note",
     "planner",
     "recurse",
     "render",
     "render_handle",
     "render_plan",
+    "rutas",
     "window",
     "worker",
 ]

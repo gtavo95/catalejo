@@ -25,8 +25,9 @@ lo usa de verdad.
 `seen.reads`, que el executor sube cada vez que el REPL devuelve algo. Es un piso
 y no una prueba: dice que el modelo tuvo algo enfrente, no que lo que afirma
 salga de ahí. Atrapa el caso que pasó de verdad, que es no haber mirado nada, y
-no atrapa una cita inventada sobre un texto que sí leyó. Para eso haría falta un
-juez, y un juez es otra célula.
+no atrapa una cita inventada sobre un texto que sí leyó. Para eso NO hace falta
+un juez: una cita es una afirmación sobre un conjunto conocido, y `citada`, en
+`citas.py`, la verifica con código.
 """
 
 from __future__ import annotations

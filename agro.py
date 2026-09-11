@@ -70,10 +70,12 @@ from catalejo.repl import (
     Registro,
     Verbos,
     Workspace,
+    citada,
     drive,
     planner,
     recurse,
     render_plan,
+    rutas,
 )
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
@@ -377,7 +379,9 @@ def traza() -> Cell:
     return cell
 
 
-def armar(texto: str, modelo: Provider, *, ver: bool, plan: bool = False) -> tuple[Cell, Workspace]:
+def armar(
+    texto: str, modelo: Provider, *, ver: bool, plan: bool = False, citas: bool = False
+) -> tuple[Cell, Workspace]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
     El workspace se arma una sola vez a propósito. Las variables persisten entre
@@ -396,6 +400,12 @@ def armar(texto: str, modelo: Provider, *, ver: bool, plan: bool = False) -> tup
     célula que los juzga va después de `grounded`. La bandera existe porque esto
     cambia la terminación del agente, que es lo más delicado que tiene, y hay que
     poder medir las dos ramas en la misma tarde.
+
+    Con `citas=True` entra `citada`, que compara las `FUENTE:` de la respuesta
+    contra las rutas del corpus y avisa cuando una no existe. Es bandera por lo
+    mismo que `plan`: cambia lo que el modelo ve, así que es una palanca y se
+    mide. El conjunto sale del texto acá, en el padre, porque el corpus vive en
+    el Environment y la célula no.
 
     `traza` va después del planner y no antes: mira los últimos dichos del paso, y
     si corriera primero, el mensaje del plan todavía no existiría.
@@ -418,6 +428,8 @@ def armar(texto: str, modelo: Provider, *, ver: bool, plan: bool = False) -> tup
         tools=ws.tools,
     )
     extras: list[Cell] = []
+    if citas:
+        extras.append(citada(rutas(texto), var=ws.var))
     if plan:
         extras.append(planner(verbos, REGISTRO, semilla=SEMILLA))
     if not ver:
@@ -561,18 +573,19 @@ def proveedor(argv: list[str]) -> Provider:
 async def main(argv: list[str]) -> None:
     ver = "--ver" in argv
     plan = "--plan" in argv
+    citas = "--citas" in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
 
     texto = corpus()
     fichas = texto.count("=== productos/")
     modelo = proveedor(argv)
-    agente, ws = armar(texto, modelo, ver=ver, plan=plan)
+    agente, ws = armar(texto, modelo, ver=ver, plan=plan, citas=citas)
     historia: tuple[tuple[str, str], ...] = ()
 
     print(
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
-        f"· {modelo.model}{' · con plan' if plan else ''}"
+        f"· {modelo.model}{' · con plan' if plan else ''}{' · con citas' if citas else ''}"
     )
 
     try:
