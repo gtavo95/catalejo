@@ -1,3 +1,4 @@
+from .contenedor import Contenedor
 from .drive import drive
 from .environment import Environment, Output, Stub
 from .executor import executor, extract_code, render
@@ -13,6 +14,7 @@ __all__ = [
     "HERRAMIENTAS",
     "INSTRUCCIONES",
     "Bridge",
+    "Contenedor",
     "Environment",
     "Handle",
     "Metered",

@@ -378,13 +378,20 @@ class Workspace:
         """
         async with self._lock:
             if self.bridge is None:
-                return await asyncio.to_thread(self._run_sync, code)
+                return await asyncio.to_thread(self.correr, code)
             self.bridge.loop = asyncio.get_running_loop()
             antes = self.bridge.spent
-            out = await asyncio.to_thread(self._run_sync, code)
+            out = await asyncio.to_thread(self.correr, code)
             return replace(out, spent=self.bridge.spent - antes)
 
-    def _run_sync(self, code: str) -> Output:
+    def correr(self, code: str) -> Output:
+        """El `exec` pelado, síncrono, sin hilo ni lock: solo correr y capturar.
+
+        Es público porque es la mitad del Workspace que se lleva el contenedor.
+        `run` es la otra mitad, la de dónde corre: el hilo, el lock, el Bridge.
+        Adentro de un proceso hijo no hay event loop que proteger, así que el
+        hijo llama esto directo.
+        """
         self._salida.clear()
         err = ""
         try:
