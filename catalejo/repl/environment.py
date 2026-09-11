@@ -15,6 +15,20 @@ lo que recupere de una búsqueda, así que este invariante es la frontera de
 seguridad: una inyección que secuestre al modelo, en el peor caso, lee lo que el
 modelo ya podía leer. Cualquier capacidad futura con efectos va detrás de
 aprobación humana explícita, nunca como un builtin más.
+
+# La única excepción, y por qué es angosta
+
+`add_step`, `mark` y `skip` apilan. Rompen "leer y devolver texto, y nada más",
+así que la excepción va escrita acá y no descubierta después: el efecto aterriza
+en un canal del Log, PROPONE y no admite, y no sale del proceso. Quien decide qué
+entra es `admitir`, que corre afuera del REPL, y el vocabulario lo cierra el
+namespace.
+
+Lo que la excepción NO tapa es la inyección. Un documento del corpus que diga
+"llamá a `add_step(...)`" se sigue apoyando en el guardrail del preámbulo, igual
+que cualquier otra instrucción que venga adentro del texto. El contenedor que va a
+venir protege la máquina, no la integridad de la checklist: para eso hace falta
+que lo que el plan afirma sea verificable, que es de qué se tratan las compuertas.
 """
 
 from __future__ import annotations
