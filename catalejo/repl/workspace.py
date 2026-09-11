@@ -187,7 +187,12 @@ def grep(
     exacto: bool = False,
     doc: str = "",
 ) -> str:
-    """Las líneas que casan con el patrón, numeradas, con el total adelante.
+    r"""Las líneas que casan con el patrón, numeradas, con el total adelante.
+
+    `texto` es donde se busca, línea por línea. `patron` es una regex de `re`, no
+    un literal: los puntos y los paréntesis hay que escaparlos. `max_hits` es
+    cuántas líneas se muestran como mucho; el total se cuenta igual y se dice
+    siempre. `exacto` y `doc` van más abajo, cada uno con su motivo.
 
     Pliega mayúsculas y acentos, y ese default no es comodidad. Sobre el catálogo
     agronómico, `mosca blanca` en minúscula devolvía 6 de las 23 líneas que hay, y
@@ -197,7 +202,7 @@ def grep(
     otra puerta.
 
     El patrón NO se pasa a minúsculas, se le sacan los acentos y las mayúsculas van
-    por la bandera. En una regex `\\S`, `\\D`, `\\W` y `\\B` significan lo contrario
+    por la bandera. En una regex `\S`, `\D`, `\W` y `\B` significan lo contrario
     que sus versiones minúsculas, así que bajar el patrón entero convierte "no
     espacio" en "espacio" y rompe en silencio cualquier búsqueda con clases.
 
@@ -206,7 +211,7 @@ def grep(
 
     `doc="viventem"` acota la búsqueda a los documentos cuya ruta contenga eso, y
     existe por un cero falso medido. El resultado sale prefijado con `ruta:`, así
-    que el modelo deduce lo razonable y escribe `productos/viventem\\.md:.*DOSIS`
+    que el modelo deduce lo razonable y escribe `productos/viventem\.md:.*DOSIS`
     para mirar una sola ficha. Ese prefijo se arma al imprimir y no está en el
     texto sobre el que se busca, así que el patrón no casa nunca. En la suite
     agronómica contra luna pasó cinco veces en una sola corrida, todas en el caso

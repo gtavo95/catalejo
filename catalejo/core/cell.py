@@ -200,6 +200,11 @@ def retry(cell: Cell, *, attempts: int) -> Cell:
 def loop(cell: Cell, *, max_steps: int, budget: int | None = None) -> Cell:
     """Repite la célula mientras el último paso pida seguir.
 
+    `cell` es la que se repite. Cada vuelta ve lo que llegó más lo que acumularon
+    las vueltas anteriores, así que un paso puede leer lo que dijo el anterior.
+    `max_steps` es vueltas; `budget` es tokens, medidos en `spent`, y `None` lo
+    apaga.
+
     Mira `added.vote`, el voto de ESTE paso, y no `acc.vote`, el voto acumulado.
     La diferencia no es un detalle: `vote` se junta por máximo, así que una vez
     que alguien votó CONTINUE el acumulado se queda en CONTINUE para siempre y un

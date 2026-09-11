@@ -168,6 +168,21 @@ def recurse(
 ) -> Workspace:
     """Un `Workspace` que además sabe delegar en otro modelo.
 
+    `payload` es el contexto grande. Entra al namespace del REPL con el nombre
+    `var` y nunca al prompt: el modelo lo consulta escribiendo código, y desde acá
+    además puede partirlo en trozos y mandarlos a leer.
+
+    `model` es el que atiende las delegaciones: la lectura plana de `llm` y el
+    worker de cada sub-agente de `rlm`. No tiene por qué ser el mismo que corre el
+    loop de arriba, que solo ve transcripciones chicas; este lee texto de verdad.
+    Entra envuelto en `Metered`, así que todo lo que gaste, a cualquier
+    profundidad, se descuenta del `budget` de este workspace.
+
+    `var` es el nombre con el que `payload` aparece en el namespace. Tiene que ser
+    el mismo que lleva el `Handle`, porque el preámbulo lo nombra y el modelo
+    escribe código contra ese nombre. Los hijos no lo heredan: un sub-agente
+    recibe su trozo siempre como `ctx`.
+
     `depth` es cuántos niveles más de `rlm` quedan. En cero el sub-agente todavía
     tiene `llm`, así que la recursión termina leyendo en vez de cortarse en seco,
     y su preámbulo ni menciona `rlm`: un builtin que no está tampoco se nombra.
@@ -177,6 +192,16 @@ def recurse(
     que tiene. Es un tope aparte del `budget` del loop, porque una sola corrida
     del REPL puede abrir cincuenta llamadas y el loop recién mira al terminar el
     paso, cuando ya se gastaron.
+
+    `max_steps` es el tope de pasos de CADA sub-agente que abre `rlm`, no del
+    árbol, y baja a los hijos sin cambios. Un hijo que llega al tope devuelve lo
+    último que dijo con la marca de que se cortó, que es lo que arma `answer`.
+
+    `paralelo` es cuántas delegaciones puede haber en vuelo a la vez desde este
+    workspace. Acota la lista que el modelo le pasa a `llm` o `rlm`: cien trozos
+    son cien llamadas, y salen de a `paralelo`. Cada hijo tiene su propio
+    semáforo, así que los hilos ocupados son como mucho `paralelo` elevado a
+    `depth`; por eso los dos no se suben juntos, como dice arriba el módulo.
 
     `extra` y `nota` son para el que llama, que sabe qué forma tiene su corpus y
     puede darle al modelo un índice ya armado. Van solo a este workspace y no a

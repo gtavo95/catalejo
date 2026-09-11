@@ -46,6 +46,11 @@ def window(said: Conversation, keep_recent: int) -> Conversation:
 def worker(model: Model, handle: Handle, *, keep_recent: int = 0) -> Cell:
     """Manda el preámbulo más la transcripción recortada, y devuelve lo que contestó.
 
+    `model` es el que contesta. `handle` es lo que se le cuenta del contexto en el
+    turno de sistema, vía `render_handle`. `keep_recent` es cuántos mensajes de la
+    cola entran al prompt además del primero; lo aplica `window`, y cero, el
+    default, manda la transcripción entera.
+
     No vota. La terminación la decide el executor mirando la forma del mensaje, y
     tenerlo en un solo lugar es lo que evita que dos células que parsean lo mismo
     se desincronicen.

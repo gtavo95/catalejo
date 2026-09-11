@@ -1,5 +1,4 @@
-"""El handle y el preámbulo: todo lo que el modelo necesita para CONSULTAR el
-contexto grande, y nada de su contenido.
+"""El handle y el preámbulo: cómo CONSULTAR el contexto grande sin ver su contenido.
 
 Es la decisión inversa a la de un agente normal. Un worker común mete el contexto
 recuperado ADENTRO del prompt; este renderiza nada más la forma de alcanzarlo.

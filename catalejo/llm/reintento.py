@@ -42,6 +42,11 @@ class ProviderError(RuntimeError):
 async def con_reintentos(pedir: Callable[[], Awaitable[T]], *, retries: int, backoff: float) -> T:
     """Repite mientras el error se declare transitorio, y al rendirse dice por qué.
 
+    `pedir` es el pedido, sin argumentos, para poder repetirlo tal cual. `retries`
+    son los reintentos después del primer pedido: `retries=2` son tres intentos.
+    `backoff` son los segundos de espera antes del primer reintento, y se duplica
+    en cada uno.
+
     El mensaje final conserva el último motivo. Sin eso, "la API no respondió"
     manda a leer los logs del proveedor para averiguar si fue cuota, red o un turno
     roto, que son tres arreglos distintos.
