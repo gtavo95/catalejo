@@ -6,6 +6,7 @@
     uv run evals.py --recurse       las 20, con `llm` disponible
     uv run evals.py --repeats=3     cada caso tres veces, para ver cuál flipa
     uv run evals.py --agro          las preguntas agronómicas, contra el agente de agro.py
+    uv run evals.py --agro --plan   las mismas, con la checklist prendida
     uv run evals.py --openai        el mismo examen contra OpenAI
 
 El corpus es `successo-okf`, la wiki de producto de una empresa de bioinsumos:
@@ -76,9 +77,9 @@ from datetime import date
 from pathlib import Path
 
 import agro
-from catalejo.core import Cell, Log, Message, Role, loop, then
+from catalejo.core import Cell, Log, Message, Role
 from catalejo.llm import Provider
-from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
+from catalejo.repl import Handle, Workspace, drive, recurse
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
 
@@ -150,8 +151,7 @@ def wiki(texto: str, modelo: Provider, *, recursivo: bool) -> tuple[Cell, Worksp
         size=f"{len(texto) // 1000} KB, ~{len(texto) // 4000}k tokens",
         tools=ws.tools,
     )
-    paso = then(worker(modelo, h, keep_recent=6), executor(ws), grounded(ws.var))
-    return loop(paso, max_steps=12, budget=120_000), ws
+    return drive(modelo, h, ws, keep_recent=6, max_steps=12, budget=120_000), ws
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,13 +170,21 @@ class Montaje:
 
 
 def montaje(argv: list[str]) -> Montaje:
-    """El montaje que pidieron. Con `--agro`, el de `agro.py` tal cual."""
+    """El montaje que pidieron. Con `--agro`, el de `agro.py` tal cual.
+
+    `--plan` es la palanca del A/B de la checklist y solo tiene sentido con
+    `--agro`, porque la semilla y el registro de compuertas son del dominio
+    agronómico. El montaje de la wiki lo ignora, y eso es correcto: el plan no es
+    una mejora del motor que se prenda en todas partes, es un cableado de un
+    agente.
+    """
     if "--agro" in argv:
+        plan = "--plan" in argv
         return Montaje(
             tsv="agro.tsv",
             corpus=agro.corpus,
-            montar=lambda texto, modelo: agro.armar(texto, modelo, ver=False),
-            pedir=lambda pregunta: agro.pedido(pregunta, ()),
+            montar=lambda texto, modelo: agro.armar(texto, modelo, ver=False, plan=plan),
+            pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan),
         )
     recursivo = "--recurse" in argv
     return Montaje(

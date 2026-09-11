@@ -4,6 +4,7 @@
     uv run agro.py "¿qué uso para trips en tomate?"
     uv run agro.py --ver "..."           además, la transcripción completa
     uv run agro.py --openai "..."        el mismo agente contra OpenAI
+    uv run agro.py --plan "..."          además, la checklist del turno
 
 El corpus son las 39 fichas de producto y la ontología de `successo-okf`: 360 KB,
 ~90k tokens. Cada ficha trae un bloque `# Agronomía` en JSON con los cultivos
@@ -61,9 +62,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from catalejo.core import ZERO, Cell, Log, Message, Role, Status, loop, then
+from catalejo.core import ZERO, Cell, Log, Message, PlanOp, Role, Status, pendientes, proyectar
 from catalejo.llm import Gemini, OpenAI, Provider
-from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
+from catalejo.repl import (
+    INSTRUCCIONES,
+    Handle,
+    Registro,
+    Verbos,
+    Workspace,
+    drive,
+    planner,
+    recurse,
+    render_plan,
+)
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
 
@@ -106,6 +117,68 @@ Para contestar esto:
   de aplicación, hora del día) andá al texto con grep.
 - Cerrá con una línea `FUENTE: productos/x.md` por cada archivo del que sacaste un dato,
   o `FUENTE: ninguna` si no salió del catálogo.
+"""
+
+
+REGISTRO: Registro = {
+    "consulto_el_catalogo": lambda log: log.reads > 0,
+    "mire_una_ficha": lambda log: any(
+        m.role is Role.USER and "productos/" in m.text and ".md:" in m.text for m in log.said
+    ),
+    "cito_la_fuente": lambda log: any(
+        m.role is Role.ASSISTANT and "FUENTE:" in m.text for m in log.said
+    ),
+}
+"""Las compuertas del plan: hechos sobre el Log, no campos que el Log no tiene.
+
+Los tres son pisos y no pruebas, igual que `reads` para `grounded`.
+`consulto_el_catalogo` dice que el REPL devolvió algo, no que sea lo que hacía
+falta. `mire_una_ficha` busca el prefijo `productos/x.md:` que `grep` le pega a
+cada hit, así que dice que una LÍNEA de una ficha le pasó por delante, no que la
+haya leído: es el piso que separa contestar desde el índice de contestar desde la
+ficha, y la dosis tiene que salir de la ficha. `cito_la_fuente` mira lo mismo que
+después lee `evals.citadas`, así que el requisito y la medición no se pueden
+desincronizar.
+
+No hay un `sin_fallas`. Sería verdad en el paso 1, cuando todavía no falló nada,
+así que cerraría su paso antes de que el paso empiece. Una compuerta que se cumple
+sola no es una compuerta.
+"""
+
+SEMILLA = (
+    PlanOp(
+        "add_step",
+        "buscar",
+        "encontrar qué productos sirven para esa plaga en ese cultivo",
+        completes_when="consulto_el_catalogo",
+    ),
+    PlanOp(
+        "add_step",
+        "dosis",
+        "traer la dosis como está: número, unidad, base, vía y volumen de agua",
+        completes_when="mire_una_ficha",
+    ),
+    PlanOp("add_step", "cultivo", "decir si el cultivo está en certified_crops de ese producto"),
+    PlanOp("add_step", "seguridad", "traer safety: incompatibilidades, horas, pH, días a cosecha"),
+    PlanOp(
+        "add_step",
+        "fuente",
+        "cerrar con una línea FUENTE por cada archivo del que salió un dato",
+        completes_when="cito_la_fuente",
+    ),
+)
+"""El esqueleto que declara el host, que es el CONTRATO escrito como checklist.
+
+Mixto a propósito: tres pasos con compuerta, que se cierran cuando el hecho pasa,
+y dos en la válvula, que los cierra el modelo. Los dos de la válvula son los que
+no tienen un hecho observable en el Log: que el cultivo esté certificado y que la
+seguridad esté traída son afirmaciones sobre el TEXTO de la respuesta, y
+verificarlas pide un juez. Mientras no haya juez, el plan dice que se hicieron
+porque el modelo lo dijo, y eso es todo lo que dice.
+
+El modelo puede agregar los suyos con `add_step`, que es lo que `flex="acotado"`
+le permite. Lo que no puede es borrar ni reescribir estos, porque `revise` no
+existe.
 """
 
 
@@ -267,7 +340,20 @@ def traza() -> Cell:
     """
 
     async def cell(seen: Log) -> Log:
-        for m in seen.said[-2:]:
+        """Mira `said` para lo que se dijo y `steps` para el plan, que no se dice.
+
+        La ventana arranca en el último dicho del modelo, que es exactamente donde
+        arrancó este paso: el modelo habla una vez y todo lo que viene después lo
+        agregaron las células de este paso. Un tope fijo de dos o tres mensajes
+        parecía lo mismo y reimprimía el mensaje del paso anterior en cuanto el
+        plan o el grounding agregaban uno.
+        """
+        desde = max(
+            (i for i, m in enumerate(seen.said) if m.role is Role.ASSISTANT),
+            default=len(seen.said),
+        )
+        movio = False
+        for m in seen.said[desde:]:
             if m.role is Role.ASSISTANT and "```" in m.text:
                 bloque = m.text.split("```")[1].removeprefix("python").strip()
                 if bloque:
@@ -276,12 +362,22 @@ def traza() -> Cell:
                 lineas = m.text.splitlines()
                 if len(lineas) > 1:
                     print(f"\033[2m    {lineas[1][:100]}\033[0m")
+            elif m.role is Role.USER and m.text.startswith("[plan]"):
+                movio = True
+                for linea in m.text.splitlines():
+                    if linea.startswith("rechazado"):
+                        print(f"\033[2m    {linea[:100]}\033[0m")
+        if movio:
+            plan = proyectar(seen.steps)
+            abiertos = ", ".join(s.id for s in pendientes(plan))
+            hechos = len(plan) - len(pendientes(plan))
+            print(f"\033[2m    plan {hechos}/{len(plan)}: falta {abiertos or 'nada'}\033[0m")
         return ZERO
 
     return cell
 
 
-def armar(texto: str, modelo: Provider, *, ver: bool) -> tuple[Cell, Workspace]:
+def armar(texto: str, modelo: Provider, *, ver: bool, plan: bool = False) -> tuple[Cell, Workspace]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
     El workspace se arma una sola vez a propósito. Las variables persisten entre
@@ -295,15 +391,24 @@ def armar(texto: str, modelo: Provider, *, ver: bool) -> tuple[Cell, Workspace]:
     El índice va por `extra`, así que vive en el namespace del REPL y no en el
     prompt. Lo que el prompt paga es la `nota`, que son veinte líneas describiendo
     la forma de un registro, no los 38 registros.
+
+    Con `plan=True` los tres verbos entran por la misma puerta que el índice y la
+    célula que los juzga va después de `grounded`. La bandera existe porque esto
+    cambia la terminación del agente, que es lo más delicado que tiene, y hay que
+    poder medir las dos ramas en la misma tarde.
+
+    `traza` va después del planner y no antes: mira los últimos dichos del paso, y
+    si corriera primero, el mensaje del plan todavía no existiría.
     """
     regs = indice()
+    verbos = Verbos()
     ws = recurse(
         texto,
         modelo,
         var="catalogo",
         depth=0,
         budget=60_000,
-        extra={"productos": regs},
+        extra={"productos": regs, **verbos.builtins} if plan else {"productos": regs},
         nota="",
     )
     h = Handle(
@@ -312,13 +417,15 @@ def armar(texto: str, modelo: Provider, *, ver: bool) -> tuple[Cell, Workspace]:
         size=f"{len(texto) // 1000} KB, ~{len(texto) // 4000}k tokens",
         tools=ws.tools,
     )
-    paso = then(worker(modelo, h, keep_recent=6), executor(ws), grounded(ws.var))
+    extras: list[Cell] = []
+    if plan:
+        extras.append(planner(verbos, REGISTRO, semilla=SEMILLA))
     if not ver:
-        paso = then(paso, traza())
-    return loop(paso, max_steps=12, budget=150_000), ws
+        extras.append(traza())
+    return drive(modelo, h, ws, keep_recent=6, max_steps=12, budget=150_000, extras=extras), ws
 
 
-def pedido(pregunta: str, historia: tuple[tuple[str, str], ...]) -> str:
+def pedido(pregunta: str, historia: tuple[tuple[str, str], ...], *, plan: bool = False) -> str:
     """La pregunta de ahora, con lo ya hablado adentro del MISMO mensaje.
 
     Va todo junto porque `window` conserva `said[0]` y los últimos N, así que el
@@ -328,13 +435,21 @@ def pedido(pregunta: str, historia: tuple[tuple[str, str], ...]) -> str:
 
     Las respuestas van cortadas: alcanzan para resolver un "¿y en banano?" y no
     para arrastrar media sesión en cada turno.
+
+    Con `plan=True`, acá entran los verbos y la semilla ya dibujada. Van en el
+    turno del usuario y NO en el preámbulo, y eso no es gusto: `nota` tiene la
+    medición de lo que pasa cuando algo así se nombra en el preámbulo, que es 0 de
+    12 corridas vivas contra 6 de 12.
     """
+    contrato = CONTRATO
+    if plan:
+        contrato += f"\n{INSTRUCCIONES}\n\n{render_plan(proyectar(SEMILLA))}\n"
     if not historia:
-        return pregunta + CONTRATO
+        return pregunta + contrato
     previas = "\n\n".join(f"P: {p}\nR: {r[:500]}" for p, r in historia)
     return (
         f"[lo que ya hablamos en esta sesión]\n{previas}\n\n"
-        f"[la pregunta de ahora]\n{pregunta}{CONTRATO}"
+        f"[la pregunta de ahora]\n{pregunta}{contrato}"
     )
 
 
@@ -402,6 +517,7 @@ async def responder(
     historia: tuple[tuple[str, str], ...],
     *,
     ver: bool,
+    plan: bool = False,
 ) -> str:
     """Una pregunta, contestada. El Log arranca limpio cada vez.
 
@@ -410,7 +526,7 @@ async def responder(
     disparar en toda la sesión: la pregunta cinco podría contestarse de memoria
     amparada en el grep de la pregunta uno.
     """
-    out = await agente(Log(said=(Message(Role.USER, pedido(pregunta, historia)),)))
+    out = await agente(Log(said=(Message(Role.USER, pedido(pregunta, historia, plan=plan)),)))
     if ver:
         for m in out.said:
             quien = {Role.USER: "repl", Role.ASSISTANT: "modelo"}.get(m.role, m.role.value)
@@ -444,23 +560,24 @@ def proveedor(argv: list[str]) -> Provider:
 
 async def main(argv: list[str]) -> None:
     ver = "--ver" in argv
+    plan = "--plan" in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
 
     texto = corpus()
     fichas = texto.count("=== productos/")
     modelo = proveedor(argv)
-    agente, ws = armar(texto, modelo, ver=ver)
+    agente, ws = armar(texto, modelo, ver=ver, plan=plan)
     historia: tuple[tuple[str, str], ...] = ()
 
     print(
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
-        f"· {modelo.model}"
+        f"· {modelo.model}{' · con plan' if plan else ''}"
     )
 
     try:
         if pregunta:
-            await responder(agente, ws, pregunta, (), ver=ver)
+            await responder(agente, ws, pregunta, (), ver=ver, plan=plan)
             return
         print("\033[2mpreguntá, o Ctrl-D para salir\033[0m")
         while True:
@@ -472,7 +589,7 @@ async def main(argv: list[str]) -> None:
                 return
             if not pregunta:
                 continue
-            respuesta = await responder(agente, ws, pregunta, historia, ver=ver)
+            respuesta = await responder(agente, ws, pregunta, historia, ver=ver, plan=plan)
             historia = (*historia, (pregunta, respuesta))[-3:]
     finally:
         await modelo.aclose()
