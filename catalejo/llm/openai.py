@@ -130,9 +130,14 @@ class OpenAI:
     """Un `Model` contra /chat/completions.
 
     Los parámetros son los mismos que los de `Gemini`, a propósito. `thinking`
-    mapea a `reasoning_effort` ("minimal", "low", "medium", "high") en vez de a
-    `thinkingLevel`, y el que llama no se entera: cambiar de proveedor es cambiar
-    la clase.
+    mapea a `reasoning_effort` en vez de a `thinkingLevel`, y el que llama no se
+    entera: cambiar de proveedor es cambiar la clase.
+
+    Qué valores acepta `reasoning_effort` lo decide el MODELO, no la API, y el
+    error no lo dice. `gpt-5.6-luna` toma "low", "medium" y "high", y rechaza
+    "minimal" con HTTP 400: doce de doce llamadas idénticas. Otros modelos sí lo
+    toman, así que la constante no valida nada, solo va este párrafo. Un valor que
+    el modelo no conoce se ve como un 400 seco, no como un default.
 
     `temperature` no se manda si no se pide, y acá no es una preferencia como en
     Gemini: los modelos de razonamiento rechazan cualquier valor que no sea 1.
