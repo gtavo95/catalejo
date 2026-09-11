@@ -1,0 +1,2198 @@
+<title>El plan que no se guarda</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --paper:      #E4E7EA;
+  --sheet:      #F8F9FA;
+  --sheet-2:    #EDEFF2;
+  --ink:        #14181F;
+  --ink-soft:   #525C6A;
+  --ink-faint:  #7C8694;
+  --rule:       #CBD1D8;
+  --rule-soft:  #DEE2E7;
+  --accent:     #1D3FBF;
+  --accent-bg:  #E1E6F6;
+  --ok:         #166D53;
+  --no:         #A63A22;
+  --code:       #EEF0F3;
+  --code-rule:  #D8DDE3;
+  --shadow:     0 1px 2px rgba(20, 24, 31, .06), 0 12px 40px rgba(20, 24, 31, .07);
+
+  --serif: "Spectral", Georgia, "Times New Roman", serif;
+  --mono:  "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:     #0B0E12;
+    --sheet:     #14181E;
+    --sheet-2:   #1A1F27;
+    --ink:       #E2E6EB;
+    --ink-soft:  #98A2AF;
+    --ink-faint: #6E7885;
+    --rule:      #2C333D;
+    --rule-soft: #232931;
+    --accent:    #93A8FF;
+    --accent-bg: #1B2340;
+    --ok:        #4FC59B;
+    --no:        #E88A6E;
+    --code:      #10141A;
+    --code-rule: #262D36;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 16px 48px rgba(0,0,0,.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:     #0B0E12;
+  --sheet:     #14181E;
+  --sheet-2:   #1A1F27;
+  --ink:       #E2E6EB;
+  --ink-soft:  #98A2AF;
+  --ink-faint: #6E7885;
+  --rule:      #2C333D;
+  --rule-soft: #232931;
+  --accent:    #93A8FF;
+  --accent-bg: #1B2340;
+  --ok:        #4FC59B;
+  --no:        #E88A6E;
+  --code:      #10141A;
+  --code-rule: #262D36;
+  --shadow:    0 1px 2px rgba(0,0,0,.4), 0 16px 48px rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  padding: clamp(0px, 3vw, 48px) clamp(0px, 3vw, 40px);
+}
+
+.hoja {
+  max-width: 1000px;
+  margin: 0 auto;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  box-shadow: var(--shadow);
+  padding: clamp(28px, 5vw, 72px) clamp(20px, 4.5vw, 64px) 64px;
+}
+
+/* ---------- portada ---------- */
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+h1 {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: clamp(38px, 6.5vw, 62px);
+  line-height: 1.02;
+  letter-spacing: -.022em;
+  margin: 14px 0 0;
+  text-wrap: balance;
+}
+
+.bajada {
+  max-width: 56ch;
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 20px 0 0;
+}
+
+.tesis-portada {
+  margin: 34px 0 0;
+  padding: 18px 0 18px 22px;
+  border-left: 2px solid var(--accent);
+  max-width: 58ch;
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 300;
+  line-height: 1.45;
+}
+
+/* ---------- programa ---------- */
+
+.programa {
+  margin: 44px 0 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 8px 0;
+}
+
+.programa ol { list-style: none; margin: 0; padding: 0; }
+.programa li { border-bottom: 1px solid var(--rule-soft); }
+.programa li:last-child { border-bottom: 0; }
+
+.programa a {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr;
+  gap: 0 14px;
+  align-items: baseline;
+  padding: 10px 6px;
+  text-decoration: none;
+  color: inherit;
+  transition: background .14s ease, padding-left .14s ease;
+}
+.programa a:hover, .programa a:focus-visible {
+  background: var(--sheet-2);
+  padding-left: 12px;
+}
+.programa .p-num {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: .04em;
+}
+.programa .p-tit { font-weight: 500; }
+.programa .p-sub {
+  display: block;
+  font-size: 15px;
+  font-weight: 300;
+  color: var(--ink-soft);
+}
+
+/* ---------- lecciones ---------- */
+
+.leccion {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0 2.6rem;
+  margin-top: 76px;
+  padding-top: 26px;
+  border-top: 1px solid var(--rule);
+}
+
+.rail { position: relative; }
+
+@media (min-width: 900px) {
+  .rail-inner { position: sticky; top: 32px; }
+}
+
+.rail .num {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+
+.rail .tesis {
+  margin: 12px 0 0;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 300;
+  line-height: 1.42;
+  color: var(--ink-soft);
+}
+
+.cuerpo > * { max-width: 64ch; }
+.cuerpo > figure,
+.cuerpo > .tabla-wrap,
+.cuerpo > .traza,
+.cuerpo > .corridas,
+.cuerpo > pre { max-width: none; }
+
+h2 {
+  font-size: clamp(27px, 3.6vw, 34px);
+  font-weight: 600;
+  letter-spacing: -.018em;
+  line-height: 1.14;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+h3 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -.008em;
+  margin: 38px 0 10px;
+}
+
+p { margin: 0 0 17px; }
+
+.cuerpo ul { margin: 0 0 17px; padding-left: 1.15em; }
+.cuerpo li { margin-bottom: 11px; }
+.cuerpo li::marker { color: var(--ink-faint); }
+
+b, strong { font-weight: 600; }
+a { color: var(--accent); }
+
+code {
+  font-family: var(--mono);
+  font-size: .86em;
+  background: var(--code);
+  border: 1px solid var(--code-rule);
+  border-radius: 2px;
+  padding: .08em .3em;
+  white-space: nowrap;
+}
+
+pre {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.68;
+  background: var(--code);
+  border: 1px solid var(--code-rule);
+  border-radius: 2px;
+  padding: 16px 18px;
+  margin: 0 0 20px;
+  overflow-x: auto;
+  tab-size: 4;
+}
+pre code { background: none; border: 0; padding: 0; font-size: inherit; white-space: pre; }
+pre .c { color: var(--ink-faint); font-style: italic; }
+
+.ecuacion {
+  font-family: var(--mono);
+  font-size: 15px;
+  text-align: center;
+  padding: 22px 14px;
+  margin: 0 0 22px;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.ecuacion .gana { color: var(--accent); font-weight: 600; }
+
+.nota {
+  margin: 0 0 20px;
+  padding: 15px 18px;
+  background: var(--sheet-2);
+  border-left: 2px solid var(--rule);
+  font-size: 15.5px;
+  font-weight: 300;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.nota.viva { border-left-color: var(--no); }
+.nota .nota-tit {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 7px;
+  font-style: normal;
+  font-weight: 500;
+}
+.nota strong { color: var(--ink); font-weight: 500; }
+
+/* ---------- figuras ---------- */
+
+figure { margin: 8px 0 26px; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--ink); }
+figcaption {
+  margin-top: 12px;
+  font-size: 14.5px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+.svg-l { font-family: "IBM Plex Mono", monospace; font-size: 12px; fill: currentColor; }
+.svg-s { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; fill: currentColor; opacity: .62; }
+.svg-t { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; font-weight: 600; fill: currentColor; }
+.svg-box { fill: none; stroke: currentColor; stroke-width: 1.1; opacity: .55; }
+.svg-fill { fill: currentColor; opacity: .05; stroke: currentColor; stroke-width: 1.1; stroke-opacity: .5; }
+.svg-line { stroke: currentColor; stroke-width: 1.1; fill: none; opacity: .55; }
+.svg-acc { stroke: var(--accent); stroke-width: 1.4; fill: none; }
+.svg-acc-t { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--accent); }
+.svg-dash { stroke-dasharray: 4 4; }
+
+/* ---------- tablas ---------- */
+
+.tabla-wrap { overflow-x: auto; margin: 0 0 24px; }
+
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14.5px; }
+th, td {
+  text-align: left;
+  padding: 10px 14px 10px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+}
+thead th {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+}
+tbody th { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); }
+td.mono { font-family: var(--mono); font-size: 12.5px; }
+.vale, .novale { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.vale { color: var(--ok); }
+.novale { color: var(--no); }
+.vale::before, .novale::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: currentColor;
+}
+.novale::before { background: none; border: 1px solid currentColor; }
+
+/* ---------- corridas reales ---------- */
+
+.corridas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px;
+  margin: 8px 0 26px;
+}
+.corrida { border-top: 2px solid var(--accent); padding-top: 14px; }
+.corrida-tit { font-family: var(--mono); font-size: 12px; font-weight: 600; margin: 0 0 4px; }
+.corrida-sub {
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--ink-soft);
+  margin: 0 0 14px;
+  line-height: 1.45;
+}
+.corrida dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.corrida dt { color: var(--ink-faint); }
+.corrida dd { margin: 0; text-align: right; }
+.corrida dd.grande { color: var(--accent); font-weight: 600; }
+
+/* ---------- traza interactiva ---------- */
+
+.traza {
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--sheet-2);
+  margin: 8px 0 26px;
+  overflow: hidden;
+}
+
+.traza-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rule);
+  align-items: center;
+}
+
+.chip {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  color: var(--ink-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background .13s ease, color .13s ease, border-color .13s ease;
+}
+.chip:hover { border-color: var(--accent); color: var(--ink); }
+.chip[aria-current="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--sheet);
+}
+
+.traza-cuerpo { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+@media (max-width: 760px) { .traza-cuerpo { grid-template-columns: minmax(0, 1fr); } }
+
+.traza-conv {
+  padding: 16px 16px 6px;
+  border-right: 1px solid var(--rule);
+  min-height: 340px;
+}
+@media (max-width: 760px) {
+  .traza-conv { border-right: 0; border-bottom: 1px solid var(--rule); min-height: 0; }
+}
+
+.dicho {
+  margin-bottom: 12px;
+  padding: 9px 11px;
+  background: var(--sheet);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  transition: border-color .2s ease, background .2s ease;
+}
+.dicho.nuevo { border-color: var(--accent); background: var(--accent-bg); }
+.dicho .rol {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: block;
+  margin-bottom: 5px;
+}
+.dicho.nuevo .rol { color: var(--accent); }
+.dicho .txt {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.traza-lado { padding: 16px; overflow-x: auto; }
+
+.panel-tit {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 10px;
+}
+
+table.celdas {
+  min-width: 0;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+table.celdas th, table.celdas td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  white-space: nowrap;
+}
+table.celdas thead th {
+  font-size: 9.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding-bottom: 6px;
+}
+table.celdas td { text-align: right; }
+table.celdas td:first-child, table.celdas th:first-child { text-align: left; }
+table.celdas tbody th { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
+table.celdas .nada { color: var(--ink-faint); }
+table.celdas .hi { color: var(--accent); font-weight: 600; }
+table.celdas tr.total th, table.celdas tr.total td {
+  border-top: 1px solid var(--rule);
+  border-bottom: 0;
+  padding-top: 8px;
+}
+table.celdas tr.total th { color: var(--ink); font-weight: 600; }
+table.celdas tr.acum th, table.celdas tr.acum td {
+  border-top: 1px dashed var(--rule);
+  border-bottom: 0;
+  padding-top: 8px;
+  color: var(--ink-soft);
+}
+table.celdas tr.acum th { color: var(--ink-soft); font-weight: 400; }
+
+.panel-pie {
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.traza-nota {
+  padding: 14px 16px;
+  border-top: 1px solid var(--rule);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.traza-nota code { font-size: 12px; background: var(--sheet); }
+.traza-nota strong { color: var(--ink); font-weight: 500; }
+
+.traza-pie {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--rule);
+  align-items: center;
+}
+.nav-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 6px 14px;
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  color: var(--ink);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.nav-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.nav-btn:disabled { opacity: .35; cursor: default; }
+.paso-de { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); margin-left: auto; }
+
+/* ---------- estado ---------- */
+
+.estado-lista { list-style: none; margin: 0 0 22px; padding: 0; }
+.estado-lista li {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  align-items: baseline;
+  margin: 0;
+}
+.est { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+.est.hecho { color: var(--ok); }
+.est.falta { color: var(--ink-faint); }
+.estado-lista .item { font-size: 15.5px; }
+.estado-lista .item code { font-size: 12.5px; }
+.estado-lista .por { display: block; font-size: 14px; font-weight: 300; color: var(--ink-soft); }
+
+/* ---------- cierre ---------- */
+
+.colofon {
+  margin-top: 72px;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 899px) {
+  .leccion { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .rail { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+  .rail .num { font-size: 20px; }
+  .rail .tesis { margin: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+<style>
+/* ---------- lo que esta hoja agrega ---------- */
+
+:root { --mech: #0E6E63; --mech-bg: #DDEDEA; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --mech: #55C9B6; --mech-bg: #10322E; }
+}
+:root[data-theme="dark"] { --mech: #55C9B6; --mech-bg: #10322E; }
+
+.svg-mech   { stroke: var(--mech); stroke-width: 1.4; fill: none; }
+.svg-mech-t { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--mech); }
+.svg-mech-f { fill: var(--mech); opacity: .07; stroke: var(--mech); stroke-width: 1.2; stroke-opacity: .55; }
+.svg-no     { stroke: var(--no); stroke-width: 1.3; fill: none; }
+.svg-no-t   { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--no); }
+.svg-ok-t   { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--ok); }
+.svg-head   { fill: currentColor; opacity: .55; stroke: none; }
+.svg-head-a { fill: var(--accent); stroke: none; }
+.svg-head-m { fill: var(--mech); stroke: none; }
+
+.nota.mecanica { border-left-color: var(--mech); }
+.nota.mecanica .nota-tit { color: var(--mech); }
+
+/* la checklist, dibujada como el modelo la lee */
+.checklist {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.9;
+  background: var(--code);
+  border: 1px solid var(--code-rule);
+  border-radius: 2px;
+  padding: 14px 16px;
+  margin: 0 0 22px;
+  overflow-x: auto;
+}
+.checklist .marca { color: var(--ink-faint); }
+.checklist .marca.cerrado { color: var(--ok); }
+.checklist .marca.activo { color: var(--accent); }
+.checklist .compuerta { color: var(--mech); }
+.checklist .rechazo { color: var(--no); }
+
+/* el par de arms de la bitácora */
+.bitacora { margin: 0 0 26px; }
+.bitacora table { min-width: 520px; }
+.bitacora td.num { font-family: var(--mono); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.bitacora tbody tr.arm th { color: var(--mech); }
+
+.dos-lados {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0 34px;
+  margin: 0 0 6px;
+}
+.dos-lados h4 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.dos-lados .lado-pat h4 { color: var(--accent); border-bottom-color: var(--accent); }
+.dos-lados .lado-dat h4 { color: var(--mech); border-bottom-color: var(--mech); }
+.dos-lados p { font-size: 15.5px; }
+</style>
+
+<div class="hoja">
+
+<header>
+  <p class="eyebrow">Notas de clase · rlm</p>
+  <h1>El plan que no se guarda</h1>
+  <p class="bajada">
+    Una célula que lleva la cuenta de lo que falta, en un agente que no tiene tool use.
+    El plan no se guarda en ninguna parte: se calcula plegando lo que se movió. Y la palabra
+    <code>done</code> no está en el vocabulario del modelo.
+  </p>
+  <p class="tesis-portada">
+    El turno termina cuando un predicado dice que sí, no cuando el modelo deja de escribir código.
+  </p>
+
+  <nav class="programa" aria-label="Programa">
+    <ol>
+      <li><a href="#l0"><span class="p-num">00</span><span><span class="p-tit">El agujero</span><span class="p-sub">La forma del mensaje decide el control, y no alcanza</span></span></a></li>
+      <li><a href="#l1"><span class="p-num">01</span><span><span class="p-tit">Las dos mitades</span><span class="p-sub">Un patrón que no cuesta nada y un dato que cuesta un canal</span></span></a></li>
+      <li><a href="#l2"><span class="p-num">02</span><span><span class="p-tit">El canal</span><span class="p-sub">steps no es el plan, son las movidas del plan</span></span></a></li>
+      <li><a href="#l3"><span class="p-num">03</span><span><span class="p-tit">La proyección</span><span class="p-sub">Un fold, y la ley que hace que nadie pase el plan</span></span></a></li>
+      <li><a href="#l4"><span class="p-num">04</span><span><span class="p-tit">El mecanismo</span><span class="p-sub">Tres rutas para editar el plan, y la que no tiene parser</span></span></a></li>
+      <li><a href="#l5"><span class="p-num">05</span><span><span class="p-tit">Proponer y admitir</span><span class="p-sub">Dos actos, dos lugares, y un reduce que no es un filter</span></span></a></li>
+      <li><a href="#l6"><span class="p-num">06</span><span><span class="p-tit">Las compuertas</span><span class="p-sub">Quién puede decir done, y la válvula que queda abierta</span></span></a></li>
+      <li><a href="#l7"><span class="p-num">07</span><span><span class="p-tit">La terminación</span><span class="p-sub">Vetar sin poder vetar, otra vez</span></span></a></li>
+      <li><a href="#l8"><span class="p-num">08</span><span><span class="p-tit">El turno completo</span><span class="p-sub">Cuatro pasos sobre el catálogo agronómico, paso por paso</span></span></a></li>
+      <li><a href="#l9"><span class="p-num">09</span><span><span class="p-tit">Lo que no se construyó</span><span class="p-sub">Seis ausencias y su razón</span></span></a></li>
+      <li><a href="#lA"><span class="p-num">A</span><span><span class="p-tit">Dónde está parado esto</span><span class="p-sub">Qué está medido, qué no, y qué no tapa</span></span></a></li>
+    </ol>
+  </nav>
+</header>
+
+<!-- ============ 00 ============ -->
+<section class="leccion" id="l0">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">00</div>
+    <p class="tesis">Prosa quiere decir terminé. Alcanza para decidir el control y no alcanza para nada más.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>El agujero</h2>
+
+    <p>
+      El agente de este repo termina por la forma del mensaje. Si el modelo escribió una cerca de
+      código, el executor la corre y vota CONTINUE; si escribió prosa sin backticks, vota DONE y el
+      loop corta. Una sola función decide, <code>extract_code</code>, y por eso el executor y el voto
+      nunca pueden estar en desacuerdo.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 236" role="img" aria-label="La forma del mensaje decide el control: con cerca vota CONTINUE, sin cerca vota DONE, y nadie mira qué se hizo">
+        <text class="svg-t" x="180" y="26" text-anchor="middle">el modelo escribió</text>
+        <text class="svg-t" x="560" y="26" text-anchor="middle">el modelo escribió</text>
+
+        <rect class="svg-fill" x="40" y="40" width="280" height="52"/>
+        <text class="svg-l" x="180" y="62" text-anchor="middle">```python</text>
+        <text class="svg-l" x="180" y="80" text-anchor="middle">print(grep(ctx, "dosis"))</text>
+
+        <rect class="svg-fill" x="420" y="40" width="280" height="52"/>
+        <text class="svg-l" x="560" y="71" text-anchor="middle">la dosis es 1.0-2.14 L/ha</text>
+
+        <line class="svg-line" x1="180" y1="92" x2="180" y2="126"/>
+        <path class="svg-head" d="M176 126 L184 126 L180 134 Z"/>
+        <line class="svg-line" x1="560" y1="92" x2="560" y2="126"/>
+        <path class="svg-head" d="M556 126 L564 126 L560 134 Z"/>
+
+        <text class="svg-acc-t" x="180" y="152" text-anchor="middle">CONTINUE</text>
+        <text class="svg-s" x="180" y="170" text-anchor="middle">el loop da otra vuelta</text>
+
+        <text class="svg-acc-t" x="560" y="152" text-anchor="middle">DONE</text>
+        <text class="svg-s" x="560" y="170" text-anchor="middle">el turno termina</text>
+
+        <rect class="svg-box svg-dash" x="420" y="188" width="280" height="38" style="stroke:var(--no);opacity:.75"/>
+        <text class="svg-no-t" x="560" y="212" text-anchor="middle">¿hizo las cinco cosas que había que hacer?</text>
+      </svg>
+      <figcaption>
+        La terminación es sintáctica. Es exacta para el control, que es lo que tiene que decidir, y
+        no dice una palabra sobre el trabajo: un modelo que contesta después de un solo grep termina
+        igual de bien que uno que verificó todo.
+      </figcaption>
+    </figure>
+
+    <p>
+      Sobre el asesor agronómico eso se paga. El contrato pide cinco cosas por respuesta: la dosis con
+      su unidad y su base, si el cultivo está certificado, lo que diga <code>safety</code>, decir con
+      todas las letras cuándo el catálogo no lo tiene, y una línea <code>FUENTE:</code> por archivo
+      usado. Una dosis inventada se aplica en una hectárea de verdad, así que el modo de falla que
+      importa no es "no encontró": es "no encontró y contestó igual", y su primo, "encontró la dosis y
+      se olvidó de la seguridad".
+    </p>
+
+    <p>
+      Ya hay una célula que persigue la primera mitad de eso. <code>grounded</code> mira
+      <code>reads</code> y veta la respuesta que no consultó nada. Es un piso y no una prueba, y sobre
+      todo es un solo hecho: consultó o no consultó. Lo que falta es llevar la cuenta de varias cosas
+      a la vez, y que esa cuenta la lleve algo que el modelo no pueda declarar cumplida solo porque
+      dejó de escribir código.
+    </p>
+
+    <div class="nota">
+      <span class="nota-tit">la pregunta que gobierna el diseño</span>
+      Un plan es un primitivo del álgebra, o es una implementación que vive arriba? La respuesta
+      resultó ser "las dos cosas, y conviene separarlas", y es la lección 01.
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 ============ -->
+<section class="leccion" id="l1">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">01</div>
+    <p class="tesis">El cableado es un patrón y no toca el álgebra. La checklist es un dato y cuesta exactamente un canal.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>Las dos mitades</h2>
+
+    <p>
+      "El planner" nombra dos cosas distintas que conviene no mezclar, porque una es gratis y la otra
+      no.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 300" role="img" aria-label="Las dos mitades del planner: el cableado como patrón a la izquierda, la checklist como dato a la derecha, separadas por una línea">
+        <line class="svg-line" x1="370" y1="14" x2="370" y2="286" stroke-dasharray="3 5"/>
+
+        <text class="svg-acc-t" x="176" y="28" text-anchor="middle" style="font-weight:600">EL CABLEADO</text>
+        <text class="svg-s" x="176" y="45" text-anchor="middle">un patrón</text>
+
+        <text class="svg-mech-t" x="560" y="28" text-anchor="middle" style="font-weight:600">LA CHECKLIST</text>
+        <text class="svg-s" x="560" y="45" text-anchor="middle">un dato con su intérprete</text>
+
+        <rect class="svg-box" x="42" y="62" width="268" height="26" style="stroke:var(--accent);opacity:.7"/>
+        <text class="svg-l" x="176" y="79" text-anchor="middle">worker</text>
+        <rect class="svg-box" x="42" y="94" width="268" height="26" style="stroke:var(--accent);opacity:.7"/>
+        <text class="svg-l" x="176" y="111" text-anchor="middle">executor</text>
+        <rect class="svg-box" x="42" y="126" width="268" height="26" style="stroke:var(--accent);opacity:.7"/>
+        <text class="svg-l" x="176" y="143" text-anchor="middle">grounded</text>
+        <rect class="svg-box" x="42" y="158" width="268" height="26" style="stroke:var(--accent);opacity:.7"/>
+        <text class="svg-l" x="176" y="175" text-anchor="middle">planner</text>
+
+        <path class="svg-acc" d="M30 62 L18 62 L18 184 L30 184"/>
+        <text class="svg-acc-t" x="176" y="208" text-anchor="middle">then(...) adentro de loop(...)</text>
+        <text class="svg-s" x="176" y="232" text-anchor="middle">Cell… → Cell</text>
+        <text class="svg-ok-t" x="176" y="262" text-anchor="middle">canales nuevos: 0</text>
+        <text class="svg-s" x="176" y="280" text-anchor="middle">catalejo/repl/drive.py</text>
+
+        <rect class="svg-mech-f" x="430" y="62" width="260" height="90"/>
+        <text class="svg-l" x="446" y="82">Step · PlanOp · Veredicto</text>
+        <text class="svg-l" x="446" y="102">aplicar · proyectar</text>
+        <text class="svg-l" x="446" y="122">admitir · cerrar · completo</text>
+        <text class="svg-s" x="446" y="142">sin modelo, sin REPL, sin Log</text>
+
+        <path class="svg-mech" d="M560 152 L560 184"/>
+        <path class="svg-head-m" d="M556 184 L564 184 L560 192 Z"/>
+        <text class="svg-mech-t" x="560" y="212" text-anchor="middle">viaja en el Log</text>
+        <text class="svg-s" x="560" y="232" text-anchor="middle">un canal: steps</text>
+        <text class="svg-no-t" x="560" y="262" text-anchor="middle">canales nuevos: 1</text>
+        <text class="svg-s" x="560" y="280" text-anchor="middle">catalejo/core/plan.py</text>
+      </svg>
+      <figcaption>
+        La línea del medio es la separación entre los primitivos y las implementaciones de los
+        primitivos. A la izquierda, una función de células a célula, del mismo tipo que
+        <code>then</code> o <code>loop</code>: no agrega vocabulario, compone el que hay. A la
+        derecha, un tipo de dato que el álgebra tiene que saber transportar.
+      </figcaption>
+    </figure>
+
+    <div class="dos-lados">
+      <div class="lado-pat">
+        <h4>Lo que es un patrón</h4>
+        <p>
+          Que el juez corra después del executor. Que lo que gasta vaya detrás de un
+          <code>only</code>. Que el loop tenga un tope mecánico. Que la política se exprese votando.
+          Todo eso se escribe hoy, sin tocar <code>core</code>, y lo único que le faltaba era un
+          nombre.
+        </p>
+      </div>
+      <div class="lado-dat">
+        <h4>Lo que es un dato</h4>
+        <p>
+          Un paso, su estado, qué lo cierra. Qué significa mover uno. Cómo se juntan dos tandas de
+          movidas. Eso no se puede expresar componiendo lo que ya hay, porque no existe nada que
+          transporte un paso de una célula a otra.
+        </p>
+      </div>
+    </div>
+
+    <p>
+      La mitad de la izquierda ya existía escrita dos veces, a mano, en <code>agro.py</code> y en
+      <code>evals.py</code>. O sea que el eval medía una copia del agente y no el agente. Nombrarla
+      arregló eso de paso.
+    </p>
+
+<pre><code>def drive(model, handle, env, *, keep_recent=6, max_steps=12,
+          budget=None, extras=()) -&gt; Cell:
+    paso = then(
+        worker(model, handle, keep_recent=keep_recent),
+        executor(env),
+        grounded(handle.var),
+        *extras,
+    )
+    return loop(paso, max_steps=max_steps, budget=budget)</code></pre>
+
+    <p>
+      El orden no es negociable en las tres primeras. <code>executor</code> va después del worker
+      porque corre lo que el worker acaba de proponer, y <code>grounded</code> va después del
+      executor porque mira <code>reads</code>, que el executor acaba de subir. Los
+      <code>extras</code> van al final por lo mismo: una célula que juzgue el paso necesita ver el
+      paso entero, y en <code>then</code> cada célula ve lo que llegó más lo que agregaron las
+      anteriores.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section class="leccion" id="l2">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">02</div>
+    <p class="tesis">El canal no lleva el plan. Lleva las movidas, en el orden en que se movió.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>El canal</h2>
+
+    <p>
+      El <code>Log</code> tenía cinco canales y ahora tiene seis. El nuevo es una lista de
+      <code>PlanOp</code>, y la decisión que importa es que no guarda el plan: guarda lo que se
+      movió.
+    </p>
+
+<pre><code>@dataclass(frozen=True, slots=True)
+class Log:
+    said:  Conversation         = ()
+    steps: tuple[PlanOp, ...]   = ()     <span class="c"># el canal nuevo</span>
+    fails: tuple[Fail, ...]     = ()
+    vote:  Status               = Status.QUIET
+    spent: int                  = 0
+    reads: int                  = 0</code></pre>
+
+<pre><code>def merge(a: Log, b: Log) -&gt; Log:
+    return Log(
+        said  = a.said + b.said,
+        steps = a.steps + b.steps,       <span class="c"># una línea, igual que said</span>
+        fails = tuple(sorted(set(a.fails) | set(b.fails))),
+        vote  = max(a.vote, b.vote),
+        spent = a.spent + b.spent,
+        reads = a.reads + b.reads,
+    )</code></pre>
+
+    <p>
+      Agregar un canal fue una línea en <code>merge</code> y ninguna en <code>drop</code>, que saca
+      los vacíos de <code>ZERO</code>. Eso estaba prometido en el diseño del álgebra desde el
+      principio y esta es la primera vez que se cobra la promesa.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 236" role="img" aria-label="Tres pasos del loop aportan movidas al canal steps y el canal las concatena en orden">
+        <text class="svg-s" x="130" y="26" text-anchor="middle">paso 1</text>
+        <text class="svg-s" x="370" y="26" text-anchor="middle">paso 2</text>
+        <text class="svg-s" x="610" y="26" text-anchor="middle">paso 3</text>
+
+        <rect class="svg-box" x="30" y="38" width="200" height="74"/>
+        <text class="svg-l" x="46" y="62">add_step("buscar")</text>
+        <text class="svg-l" x="46" y="82">add_step("dosis")</text>
+        <text class="svg-mech-t" x="46" y="102">mark("buscar","done")</text>
+
+        <rect class="svg-box" x="270" y="38" width="200" height="74"/>
+        <text class="svg-l" x="286" y="62">mark("dosis","active")</text>
+        <text class="svg-s" x="286" y="82">(nada más)</text>
+
+        <rect class="svg-box" x="510" y="38" width="200" height="74"/>
+        <text class="svg-l" x="526" y="62">skip("seguridad")</text>
+        <text class="svg-mech-t" x="526" y="82">mark("dosis","done")</text>
+
+        <line class="svg-line" x1="130" y1="112" x2="130" y2="146"/>
+        <path class="svg-head" d="M126 146 L134 146 L130 154 Z"/>
+        <line class="svg-line" x1="370" y1="112" x2="370" y2="146"/>
+        <path class="svg-head" d="M366 146 L374 146 L370 154 Z"/>
+        <line class="svg-line" x1="610" y1="112" x2="610" y2="146"/>
+        <path class="svg-head" d="M606 146 L614 146 L610 154 Z"/>
+
+        <rect class="svg-mech-f" x="30" y="160" width="680" height="52"/>
+        <text class="svg-l" x="50" y="182">steps = ( add · add · mark · mark · skip · mark )</text>
+        <text class="svg-s" x="50" y="202">seis movidas, en orden, y ninguna copia del plan</text>
+      </svg>
+      <figcaption>
+        En verde, las movidas que emite la máquina; en negro, las que propuso el modelo. El canal no
+        las distingue y no le hace falta: para cuando llegan acá ya pasaron por el árbitro.
+      </figcaption>
+    </figure>
+
+    <h3>Cada canal trae su propia álgebra</h3>
+
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr><th>canal</th><th>se junta</th><th>conmuta</th><th>idempotente</th><th>qué significa</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>said</th><td class="mono">concatena</td>
+            <td><span class="novale">no</span></td><td><span class="novale">no</span></td>
+            <td>el orden es el significado</td>
+          </tr>
+          <tr>
+            <th>steps</th><td class="mono">concatena</td>
+            <td><span class="novale">no</span></td><td><span class="novale">no</span></td>
+            <td>es un plan: agregar y después cerrar no es lo mismo al revés</td>
+          </tr>
+          <tr>
+            <th>fails</th><td class="mono">unión</td>
+            <td><span class="vale">sí</span></td><td><span class="vale">sí</span></td>
+            <td>el mismo error dos veces es un error</td>
+          </tr>
+          <tr>
+            <th>vote</th><td class="mono">máximo</td>
+            <td><span class="vale">sí</span></td><td><span class="vale">sí</span></td>
+            <td>si alguien dice que falta, falta</td>
+          </tr>
+          <tr>
+            <th>spent</th><td class="mono">suma</td>
+            <td><span class="vale">sí</span></td><td><span class="novale">no</span></td>
+            <td>reintentar cuesta plata</td>
+          </tr>
+          <tr>
+            <th>reads</th><td class="mono">suma</td>
+            <td><span class="vale">sí</span></td><td><span class="novale">no</span></td>
+            <td>consultar dos veces son dos consultas</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Que <code>steps</code> no sea idempotente no molesta, y es por una propiedad del intérprete y
+      no del canal: <code>aplicar</code> es la identidad cuando el op no cambia nada, así que un op
+      repetido viaja dos veces y mueve el plan una. El canal no tiene que deduplicar nada.
+    </p>
+
+    <h3>El combinador que ya sabía qué hacer con esto</h3>
+
+    <p>
+      <code>retry</code> descarta el intento perdido, y elige canal por canal qué sobrevive. Del
+      perdido quedaban <code>spent</code> y <code>fails</code>, y se iban <code>said</code>,
+      <code>vote</code> y <code>reads</code>. Ahora se va también <code>steps</code>:
+    </p>
+
+<pre><code>perdido = drop("said", "vote", "reads", "steps")</code></pre>
+
+    <p>
+      El argumento es el mismo que ya valía para <code>reads</code>, un canal más allá. Si
+      <code>steps</code> quedara, un intento que cerró un paso y después reventó dejaría la checklist
+      avanzada por un turno que nadie se quedó. Y un paso cerrado es justo lo que nadie vuelve a
+      mirar.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 03 ============ -->
+<section class="leccion" id="l3">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">03</div>
+    <p class="tesis">El plan es un fold. Por eso nadie tiene que pasarlo, y dos células que lo tocan en el mismo paso no se pisan.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>La proyección</h2>
+
+    <p>
+      Un paso y una movida son dos dataclasses de cinco campos, y el intérprete son cuarenta líneas.
+    </p>
+
+<pre><code>@dataclass(frozen=True, slots=True)
+class Step:
+    id: str
+    intent: str = ""
+    status: str = "todo"          <span class="c"># todo · active · done · skipped</span>
+    completes_when: str = ""      <span class="c"># vacío = lo cierra el modelo</span>
+
+def proyectar(steps: tuple[PlanOp, ...]) -&gt; Plan:
+    return reduce(aplicar, steps, ())</code></pre>
+
+    <figure>
+      <svg viewBox="0 0 740 268" role="img" aria-label="El canal de movidas se pliega con reduce y produce el plan; el plan no se almacena">
+        <text class="svg-s" x="30" y="24">el canal</text>
+        <rect class="svg-box" x="30" y="34" width="124" height="34"/>
+        <text class="svg-l" x="92" y="56" text-anchor="middle">add buscar</text>
+        <rect class="svg-box" x="162" y="34" width="124" height="34"/>
+        <text class="svg-l" x="224" y="56" text-anchor="middle">add dosis</text>
+        <rect class="svg-box" x="294" y="34" width="124" height="34"/>
+        <text class="svg-l" x="356" y="56" text-anchor="middle">add fuente</text>
+        <rect class="svg-box" x="426" y="34" width="140" height="34"/>
+        <text class="svg-l" x="496" y="56" text-anchor="middle">mark buscar done</text>
+        <rect class="svg-box" x="574" y="34" width="136" height="34"/>
+        <text class="svg-l" x="642" y="56" text-anchor="middle">skip fuente</text>
+
+        <path class="svg-acc" d="M30 84 L710 84"/>
+        <path class="svg-acc" d="M30 84 L30 92 M710 84 L710 92"/>
+        <line class="svg-acc" x1="370" y1="92" x2="370" y2="118"/>
+        <path class="svg-head-a" d="M366 118 L374 118 L370 126 Z"/>
+        <text class="svg-acc-t" x="384" y="110">reduce(aplicar, ·, ())</text>
+
+        <text class="svg-s" x="30" y="150">el plan, calculado</text>
+        <rect class="svg-fill" x="30" y="160" width="680" height="90"/>
+        <text class="svg-l" x="52" y="184">buscar</text>
+        <text class="svg-ok-t" x="240" y="184">done</text>
+        <text class="svg-l" x="52" y="208">dosis</text>
+        <text class="svg-l" x="240" y="208" opacity=".62">todo</text>
+        <text class="svg-l" x="52" y="232">fuente</text>
+        <text class="svg-ok-t" x="240" y="232">skipped</text>
+        <text class="svg-s" x="360" y="208">no vive en ninguna parte:</text>
+        <text class="svg-s" x="360" y="228">se recalcula cada vez que alguien lo mira</text>
+      </svg>
+      <figcaption>
+        Recalcular parece caro y no lo es: un plan son cinco pasos y el canal, seis movidas. Lo que
+        compra es que no hay dos representaciones del plan que puedan quedar en desacuerdo.
+      </figcaption>
+    </figure>
+
+    <h3>La ley que hace que nadie tenga que pasar el plan</h3>
+
+    <p class="ecuacion">
+      proyectar(a ++ b) == reduce(aplicar, b, proyectar(a))
+    </p>
+
+    <p>
+      Plegar dos tramos por separado da lo mismo que plegarlos juntos. Eso se combina con la otra ley,
+      la de <code>then</code>, que le pasa a cada célula <code>merge(seen, acc)</code>: lo que llegó
+      más lo que agregaron las anteriores.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 210" role="img" aria-label="En un mismo paso, dos células ven prefijos distintos del canal y cada una proyecta el plan tal como estaba cuando corrió">
+        <text class="svg-s" x="30" y="24">un paso del loop</text>
+
+        <rect class="svg-fill" x="30" y="36" width="300" height="30"/>
+        <text class="svg-l" x="180" y="56" text-anchor="middle">seen.steps (lo que ya venía)</text>
+        <rect class="svg-box" x="336" y="36" width="180" height="30" style="stroke:var(--accent);opacity:.7"/>
+        <text class="svg-acc-t" x="426" y="56" text-anchor="middle">lo que agregó la 1ª</text>
+        <rect class="svg-box svg-dash" x="522" y="36" width="188" height="30"/>
+        <text class="svg-s" x="616" y="56" text-anchor="middle">lo que agregará la 2ª</text>
+
+        <line class="svg-line" x1="180" y1="74" x2="180" y2="106"/>
+        <path class="svg-head" d="M176 106 L184 106 L180 114 Z"/>
+        <line class="svg-acc" x1="426" y1="74" x2="426" y2="106"/>
+        <path class="svg-head-a" d="M422 106 L430 106 L426 114 Z"/>
+
+        <text class="svg-l" x="180" y="134" text-anchor="middle">la 1ª célula proyecta esto</text>
+        <text class="svg-acc-t" x="470" y="134" text-anchor="middle">la 2ª proyecta esto, que ya incluye lo de la 1ª</text>
+
+        <line class="svg-line" x1="30" y1="152" x2="330" y2="152" opacity=".3"/>
+        <line class="svg-acc" x1="30" y1="168" x2="516" y2="168"/>
+
+        <text class="svg-s" x="30" y="196">nadie recibió el plan como argumento, y sin embargo cada una vio el suyo</text>
+      </svg>
+      <figcaption>
+        Es lo que hace que agregar una segunda célula que toque el plan no obligue a rediseñar nada.
+        La que corre después ve el plan ya movido por la que corrió antes, porque ve el canal ya
+        concatenado.
+      </figcaption>
+    </figure>
+
+    <p>
+      Y hay un detalle chico que sostiene todo el resto: <code>aplicar</code> devuelve <b>el mismo
+      plan</b> cuando el op no aplica. Un verbo desconocido, un id que no existe, un estado que no
+      existe, un <code>add_step</code> repetido: todos salen por esa puerta. Así, distinguir "aplicó"
+      de "no aplicó" es una comparación, y no una segunda tabla de reglas que se pueda
+      desincronizar de la primera.
+    </p>
+
+    <div class="nota">
+      <span class="nota-tit">el bug que encontró el test</span>
+      <code>completo(())</code> devolvía <code>True</code>, porque <code>all</code> sobre la tupla
+      vacía es verdadero. Como esto es la única fuente de DONE, el plan recién nacido del paso 1
+      decía que el turno había terminado y el agente contestaba sin haber hecho nada. La versión que
+      quedó es <code>bool(plan) and all(...)</code>, y tiene su test con nombre propio.
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 ============ -->
+<section class="leccion" id="l4">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">04</div>
+    <p class="tesis">El modelo edita el plan escribiendo Python, porque es lo único que ya sabe hacer en este repo.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>El mecanismo</h2>
+
+    <p>
+      Hasta acá el plan es un dato y un canal. Falta lo único que el modelo tiene que poder hacer:
+      moverlo. Y acá el repo tiene una restricción que decide sola.
+    </p>
+
+<pre><code>class Model(Protocol):
+    async def complete(self, conv: Conversation) -&gt; Reply: ...</code></pre>
+
+    <p>
+      Eso es todo el puerto. Cero <code>tools</code>, cero <code>response_format</code>, y la única
+      dependencia de runtime es <code>httpx</code>. No es una omisión: un puerto que no alcanza se
+      paga listando implementaciones, y este alcanza para los dos proveedores que hay.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 316" role="img" aria-label="Tres rutas para que el modelo edite el plan: tool nativa, JSON en una segunda cerca, y builtins del REPL">
+        <text class="svg-t" x="30" y="26">1 · una tool nativa forzada</text>
+        <rect class="svg-box svg-dash" x="30" y="38" width="420" height="46"/>
+        <text class="svg-l" x="48" y="58">complete(conv) → Reply</text>
+        <text class="svg-s" x="48" y="76">sin tools, sin response_format, sin partes</text>
+        <text class="svg-no-t" x="470" y="66">no hay puerto</text>
+
+        <text class="svg-t" x="30" y="122">2 · un JSON en una segunda cerca</text>
+        <rect class="svg-box" x="30" y="134" width="200" height="26" style="stroke:var(--no);opacity:.8"/>
+        <text class="svg-no-t" x="46" y="152">```json  {"verb": ...}</text>
+        <rect class="svg-box" x="30" y="164" width="200" height="26"/>
+        <text class="svg-l" x="46" y="182">```python  grep(...)</text>
+        <line class="svg-no" x1="236" y1="147" x2="300" y2="147"/>
+        <path class="svg-head" d="M300 143 L300 151 L308 147 Z" style="fill:var(--no);opacity:1"/>
+        <rect class="svg-box" x="314" y="134" width="136" height="26"/>
+        <text class="svg-l" x="382" y="152" text-anchor="middle">al REPL</text>
+        <text class="svg-no-t" x="470" y="152">extract_code se queda con</text>
+        <text class="svg-no-t" x="470" y="168">la PRIMERA cerca cerrada</text>
+        <text class="svg-s" x="470" y="184">y no mira el lenguaje</text>
+
+        <text class="svg-t" x="30" y="226">3 · builtins del REPL</text>
+        <rect class="svg-mech-f" x="30" y="238" width="420" height="62"/>
+        <text class="svg-l" x="48" y="258">```python</text>
+        <text class="svg-mech-t" x="48" y="276">mark("buscar", "active")</text>
+        <text class="svg-l" x="48" y="294">print(grep(catalogo, "mosca blanca"))</text>
+        <text class="svg-ok-t" x="470" y="270">una cerca, una llamada,</text>
+        <text class="svg-ok-t" x="470" y="286">y ningún parser nuevo</text>
+      </svg>
+      <figcaption>
+        La ruta 2 no es hipotética: <code>extract_code</code> toma la primera cerca cerrada y no mira
+        el tag del lenguaje, así que un mensaje con el JSON arriba le manda el bloque equivocado al
+        REPL. La ruta 3 esquiva el bug por construcción, porque hay una sola cerca.
+      </figcaption>
+    </figure>
+
+    <p>
+      Los tres verbos son funciones normales en el namespace, y entran por la misma puerta que ya usa
+      el índice de productos de <code>agro.py</code>, el parámetro <code>extra</code> del
+      <code>Workspace</code>. El <code>Workspace</code> no se enteró de que existe un plan.
+    </p>
+
+<pre><code>add_step("verificar_cultivo", "confirmar que certifica tomate")
+mark("buscar", "active")
+skip("seguridad")</code></pre>
+
+    <p>
+      El vocabulario queda cerrado sin que nadie valide nada, porque lo cierra el namespace: un verbo
+      que no existe es un <code>NameError</code>. Es el mismo mecanismo que ya usa
+      <code>_sin_import</code> para enseñar que no hay <code>import</code>.
+    </p>
+
+    <h3>Cómo sale el op del REPL</h3>
+
+    <p>
+      Adentro del <code>exec</code> hay un colector, con la misma forma que ya tiene
+      <code>Bridge</code> para contar los tokens que gasta el modelo cuando delega. Lo que cambia es
+      por dónde sale cada cosa, y vale la pena verlos al lado.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 290" role="img" aria-label="El camino del gasto sale por Output y el executor; el camino de las movidas sale por el colector y la célula del plan">
+        <text class="svg-t" x="30" y="24">el gasto</text>
+        <text class="svg-mech-t" x="410" y="24">la movida</text>
+
+        <rect class="svg-box" x="30" y="36" width="300" height="28"/>
+        <text class="svg-l" x="180" y="55" text-anchor="middle">llm("¿de qué se queja?", trozos)</text>
+        <rect class="svg-mech-f" x="410" y="36" width="300" height="28"/>
+        <text class="svg-l" x="560" y="55" text-anchor="middle">mark("buscar", "active")</text>
+
+        <line class="svg-line" x1="180" y1="64" x2="180" y2="86"/>
+        <path class="svg-head" d="M176 86 L184 86 L180 94 Z"/>
+        <line class="svg-mech" x1="560" y1="64" x2="560" y2="86"/>
+        <path class="svg-head-m" d="M556 86 L564 86 L560 94 Z"/>
+
+        <rect class="svg-box" x="30" y="96" width="300" height="28"/>
+        <text class="svg-l" x="180" y="115" text-anchor="middle">Bridge.spent += reply.spent</text>
+        <rect class="svg-mech-f" x="410" y="96" width="300" height="28"/>
+        <text class="svg-l" x="560" y="115" text-anchor="middle">Verbos.propuestos.append(op)</text>
+
+        <line class="svg-line" x1="180" y1="124" x2="180" y2="146"/>
+        <path class="svg-head" d="M176 146 L184 146 L180 154 Z"/>
+        <line class="svg-mech" x1="560" y1="124" x2="560" y2="146"/>
+        <path class="svg-head-m" d="M556 146 L564 146 L560 154 Z"/>
+
+        <rect class="svg-box" x="30" y="156" width="300" height="28"/>
+        <text class="svg-l" x="180" y="175" text-anchor="middle">Output.spent</text>
+        <rect class="svg-mech-f" x="410" y="156" width="300" height="28"/>
+        <text class="svg-l" x="560" y="175" text-anchor="middle">planner: verbos.tomar()</text>
+
+        <line class="svg-line" x1="180" y1="184" x2="180" y2="206"/>
+        <path class="svg-head" d="M176 206 L184 206 L180 214 Z"/>
+        <line class="svg-mech" x1="560" y1="184" x2="560" y2="206"/>
+        <path class="svg-head-m" d="M556 206 L564 206 L560 214 Z"/>
+
+        <rect class="svg-box" x="30" y="216" width="300" height="28"/>
+        <text class="svg-l" x="180" y="235" text-anchor="middle">executor → Log.spent</text>
+        <rect class="svg-mech-f" x="410" y="216" width="300" height="28"/>
+        <text class="svg-l" x="560" y="235" text-anchor="middle">admitir → Log.steps</text>
+
+        <text class="svg-s" x="30" y="268">el executor sabe de gasto</text>
+        <text class="svg-s" x="30" y="284">y no tiene por qué saber de planes</text>
+        <text class="svg-s" x="410" y="268">las movidas necesitan un árbitro antes de</text>
+        <text class="svg-s" x="410" y="284">aterrizar, y el árbitro es otra célula</text>
+      </svg>
+      <figcaption>
+        Las dos mitades apilan igual adentro del <code>exec</code> y salen por puertas distintas. El
+        gasto sale por <code>Output</code> porque el executor es el que lo entiende; las movidas las
+        drena la célula del plan, porque antes de entrar hay que juzgarlas y eso no es asunto del
+        executor.
+      </figcaption>
+    </figure>
+
+    <div class="nota mecanica">
+      <span class="nota-tit">la regla que ordena estos builtins</span>
+      <strong>No pueden levantar excepción.</strong> Una excepción adentro del <code>exec</code> se
+      come el resto del snippet, y el resto del snippet es la consulta del modelo. Un verbo llamado
+      con basura apila igual, y el que lo rechaza es <code>admitir</code>, con un motivo que el
+      modelo lee en el turno siguiente. Es la misma división que ya rige en el REPL: un snippet que
+      revienta no es un <code>Fail</code>, es flujo normal.
+    </div>
+
+    <p>
+      Hay una promesa del repo que esto rompe, y la corrección está escrita en el código.
+      <code>environment.py</code> declaraba que todo builtin lee y devuelve texto, y nada más. Estos
+      tres apilan. La excepción es angosta y conviene tenerla explícita: el efecto aterriza en un
+      canal del Log, propone y no admite, y no sale del proceso.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section class="leccion" id="l5">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">05</div>
+    <p class="tesis">Proponer y admitir son dos actos. Son dos lugares, y el segundo es un reduce, no un filter.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>Proponer y admitir</h2>
+
+    <p>
+      El modelo propone adentro del REPL. La célula admite afuera. En el medio hay una función que
+      decide, y su primera versión tenía un bug que vale más que la función.
+    </p>
+
+<pre><code>def admitir(ops, plan, *, flex) -&gt; tuple[Veredicto, ...]:
+    vocabulario = deja(flex)
+    veredictos = []
+    for op in ops:
+        motivo = ""
+        if op.verb not in vocabulario:
+            motivo = f"`{op.verb}` no se puede usar acá (flex={flex})"
+        elif compuerta := gateado(plan, op):
+            motivo = f"`{op.id}` lo cierro yo cuando se cumpla `{compuerta}`"
+        else:
+            nuevo = aplicar(plan, op)
+            if nuevo == plan:
+                motivo = "no cambia nada del plan"
+            else:
+                plan = nuevo          <span class="c"># el próximo op ve el plan ya movido</span>
+        veredictos.append(Veredicto(op, not motivo, motivo))
+    return tuple(veredictos)</code></pre>
+
+    <p>
+      Esa última línea es la diferencia entre un reduce y un filter, y sin ella se pierden ops
+      válidos.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 250" role="img" aria-label="El mismo lote de dos ops juzgado contra el plan congelado pierde el segundo; juzgado contra el plan que se mueve, los dos entran">
+        <text class="svg-no-t" x="30" y="24" style="font-weight:600">UN FILTER · contra el plan de antes</text>
+        <rect class="svg-box" x="30" y="36" width="200" height="26"/>
+        <text class="svg-l" x="46" y="54">add_step("dosis")</text>
+        <rect class="svg-box" x="30" y="66" width="200" height="26"/>
+        <text class="svg-l" x="46" y="84">mark("dosis","active")</text>
+
+        <text class="svg-s" x="250" y="54">plan = ()</text>
+        <text class="svg-ok-t" x="392" y="54">entra</text>
+        <text class="svg-s" x="250" y="84">plan = ()   ← el mismo</text>
+        <text class="svg-no-t" x="392" y="84">se pierde</text>
+        <text class="svg-s" x="250" y="102">sobre un plan sin ese paso, aplicar es la identidad</text>
+
+        <line class="svg-line" x1="30" y1="126" x2="710" y2="126" opacity=".3"/>
+
+        <text class="svg-ok-t" x="30" y="152" style="font-weight:600">UN REDUCE · contra el plan que se mueve</text>
+        <rect class="svg-box" x="30" y="164" width="200" height="26"/>
+        <text class="svg-l" x="46" y="182">add_step("dosis")</text>
+        <rect class="svg-box" x="30" y="194" width="200" height="26"/>
+        <text class="svg-l" x="46" y="212">mark("dosis","active")</text>
+
+        <text class="svg-s" x="250" y="182">plan = ()</text>
+        <text class="svg-ok-t" x="392" y="182">entra</text>
+        <text class="svg-acc-t" x="250" y="212">plan = (dosis: todo)</text>
+        <text class="svg-ok-t" x="392" y="212">entra</text>
+        <text class="svg-s" x="250" y="230">el segundo op ve el paso que creó el primero</text>
+      </svg>
+      <figcaption>
+        El modelo escribe las dos cosas en el mismo bloque, que es lo natural: creo el paso y digo que
+        estoy en eso. Con el lote juzgado contra el plan previo, la mitad de lo que escribe desaparece
+        sin explicación.
+      </figcaption>
+    </figure>
+
+    <h3>El rechazo viaja</h3>
+
+    <p>
+      Un op que desaparece en silencio es un modelo que va a volver a escribir el mismo op el paso
+      siguiente. Así que <code>admitir</code> no devuelve los que entran, devuelve un veredicto por
+      op, y la célula los renderiza en el mensaje del plan:
+    </p>
+
+    <div class="checklist">
+<span class="marca cerrado">[x]</span> buscar: encontrar qué productos sirven para esa plaga en ese cultivo<br>
+<span class="marca cerrado">[x]</span> dosis: traer la dosis como está: número, unidad, base, vía y volumen de agua<br>
+<span class="marca">[ ]</span> cultivo: decir si el cultivo está en certified_crops de ese producto<br>
+<span class="marca">[ ]</span> seguridad: traer safety: incompatibilidades, horas, pH, días a cosecha<br>
+<span class="marca">[ ]</span> fuente: cerrar con una línea FUENTE por archivo <span class="compuerta">(lo cierro yo con `cito_la_fuente`)</span><br>
+<span class="rechazo">rechazado mark("buscar", "done"): no cambia nada del plan</span>
+    </div>
+
+    <h3>El vocabulario se cierra con un parámetro</h3>
+
+<pre><code>VOCABULARIO = {
+    "cerrado": frozenset({"mark", "skip"}),
+    "acotado": frozenset({"add_step", "mark", "skip"}),
+}
+
+def deja(flex: str) -&gt; frozenset[str]:
+    return VOCABULARIO.get(flex, VOCABULARIO["cerrado"])</code></pre>
+
+    <p>
+      Una flexibilidad que no existe da el vocabulario más chico y no el más grande. Un nombre mal
+      escrito en el cableado tiene que quitarle permisos al modelo, nunca darle los que nadie le dio.
+      Es la misma decisión que la compuerta desconocida de la lección que sigue, y las dos salieron
+      de mirar cómo fallan las cosas cuando fallan por un typo.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 06 ============ -->
+<section class="leccion" id="l6">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">06</div>
+    <p class="tesis">Si el modelo pudiera declarar done, "el plan está completo" sería otra forma de "el modelo dijo que terminó".</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>Las compuertas</h2>
+
+    <p>
+      Un plan que el modelo puede marcar completo no garantiza nada. Es la misma terminación que
+      teníamos en la lección 00, con más pasos intermedios y la misma confianza depositada en el mismo
+      lugar. Así que <code>done</code> se le saca del vocabulario.
+    </p>
+
+    <p>
+      Un paso puede nombrar un predicado en <code>completes_when</code>. Ese predicado es una función
+      del <code>Log</code>, la escribe el host, y cuando se cumple la máquina emite el
+      <code>done</code>. El modelo puede activar el paso, puede descartarlo, y no puede cerrarlo.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 320" role="img" aria-label="Dos carriles: un paso con compuerta lo cierra un predicado sobre el Log, un paso sin compuerta lo cierra el modelo">
+        <text class="svg-mech-t" x="30" y="24" style="font-weight:600">CON COMPUERTA</text>
+        <rect class="svg-mech-f" x="30" y="36" width="290" height="46"/>
+        <text class="svg-l" x="46" y="56">Step("buscar",</text>
+        <text class="svg-l" x="46" y="74">  completes_when="consulto_el_catalogo")</text>
+
+        <rect class="svg-box" x="400" y="36" width="310" height="46"/>
+        <text class="svg-l" x="416" y="56">REGISTRO["consulto_el_catalogo"]</text>
+        <text class="svg-l" x="416" y="74">  = lambda log: log.reads &gt; 0</text>
+
+        <line class="svg-mech" x1="320" y1="59" x2="392" y2="59"/>
+        <path class="svg-head-m" d="M392 55 L392 63 L400 59 Z"/>
+
+        <line class="svg-mech" x1="555" y1="82" x2="555" y2="106"/>
+        <path class="svg-head-m" d="M551 106 L559 106 L555 114 Z"/>
+        <text class="svg-mech-t" x="400" y="134">cerrar(plan, cumplidos) → mark("buscar", "done")</text>
+        <text class="svg-s" x="400" y="152">lo emite la máquina, y es el único emisor</text>
+
+        <rect class="svg-box" x="30" y="106" width="290" height="46" style="stroke:var(--no);opacity:.8"/>
+        <text class="svg-l" x="46" y="126">el modelo escribe</text>
+        <text class="svg-no-t" x="46" y="144">mark("buscar", "done")   → rechazado</text>
+
+        <line class="svg-line" x1="30" y1="180" x2="710" y2="180" opacity=".3"/>
+
+        <text class="svg-acc-t" x="30" y="206" style="font-weight:600">SIN COMPUERTA · LA VÁLVULA</text>
+        <rect class="svg-fill" x="30" y="218" width="290" height="46"/>
+        <text class="svg-l" x="46" y="238">Step("cultivo",</text>
+        <text class="svg-l" x="46" y="256">  completes_when="")</text>
+
+        <rect class="svg-box" x="400" y="218" width="310" height="46" style="stroke:var(--accent);opacity:.7"/>
+        <text class="svg-l" x="416" y="238">el modelo escribe</text>
+        <text class="svg-acc-t" x="416" y="256">mark("cultivo", "done")   → entra</text>
+
+        <line class="svg-acc" x1="320" y1="241" x2="392" y2="241"/>
+        <path class="svg-head-a" d="M392 237 L392 245 L400 241 Z"/>
+
+        <rect class="svg-box svg-dash" x="30" y="282" width="680" height="30" style="stroke:var(--no);opacity:.75"/>
+        <text class="svg-no-t" x="370" y="302" text-anchor="middle">con el registro vacío, TODOS los pasos caen en la válvula y el plan vuelve a no garantizar nada</text>
+      </svg>
+      <figcaption>
+        La válvula no es un descuido, es lo que queda cuando el hecho no es observable en el
+        <code>Log</code>. Lo que sí es un descuido es un plan entero de pasos sin compuerta, porque
+        ahí la checklist es documentación y no un requisito.
+      </figcaption>
+    </figure>
+
+    <h3>Los predicados de agro son hechos, no campos</h3>
+
+    <p>
+      El <code>Log</code> no tiene campos de dominio y no se los va a agregar. Así que las compuertas
+      miran lo que sí hay: cuántas veces el REPL devolvió algo, y qué se dijo.
+    </p>
+
+<pre><code>REGISTRO: Registro = {
+    "consulto_el_catalogo": lambda log: log.reads &gt; 0,
+    "mire_una_ficha":       lambda log: any(
+        m.role is Role.USER and "productos/" in m.text and ".md:" in m.text
+        for m in log.said
+    ),
+    "cito_la_fuente":       lambda log: any(
+        m.role is Role.ASSISTANT and "FUENTE:" in m.text for m in log.said
+    ),
+}</code></pre>
+
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr><th>paso</th><th>qué lo cierra</th><th>qué prueba de verdad</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>buscar</th><td class="mono">consulto_el_catalogo</td>
+            <td>que el REPL devolvió algo. No que sea lo que hacía falta.</td>
+          </tr>
+          <tr>
+            <th>dosis</th><td class="mono">mire_una_ficha</td>
+            <td>que una línea de una ficha le pasó por delante, por el prefijo
+                <code>productos/x.md:</code> que <code>grep</code> le pega a cada hit. Es el piso que
+                separa contestar desde el índice de contestar desde la ficha.</td>
+          </tr>
+          <tr>
+            <th>cultivo</th><td class="mono">la válvula</td>
+            <td>que el modelo lo dijo. No hay hecho observable.</td>
+          </tr>
+          <tr>
+            <th>seguridad</th><td class="mono">la válvula</td>
+            <td>lo mismo. Verificar esto pide un juez, y un juez es otra célula.</td>
+          </tr>
+          <tr>
+            <th>fuente</th><td class="mono">cito_la_fuente</td>
+            <td>que la respuesta trae una línea <code>FUENTE:</code>. Mira exactamente lo mismo que
+                después lee <code>evals.citadas</code>, así que el requisito y la medición no se
+                pueden desincronizar.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Los tres son pisos y no pruebas, igual que <code>reads</code> para <code>grounded</code>. Y no
+      hay un <code>sin_fallas</code>: sería verdad en el paso 1, cuando todavía no falló nada, así
+      que cerraría su paso antes de que el paso empiece. Una compuerta que se cumple sola no es una
+      compuerta.
+    </p>
+
+    <div class="nota viva">
+      <span class="nota-tit">la compuerta que no existe</span>
+      Un <code>completes_when</code> que nombra un predicado que no está en el registro
+      <strong>no se cumple nunca</strong>, y la célula anota un <code>Fail</code>. Es a propósito: así
+      el paso queda abierto, el plan no se completa y el turno sale marcado. Al revés, con la
+      compuerta desconocida tratada como cumplida, un typo desactivaría el requisito y nadie se
+      enteraría. Esa es la falla que hay que evitar, no la otra.
+    </div>
+
+    <h3>Y por qué la máquina emite un op en vez de mover el plan</h3>
+
+<pre><code>def cerrar(plan: Plan, cumplidos: frozenset[str]) -&gt; tuple[PlanOp, ...]:
+    return tuple(
+        PlanOp("mark", s.id, status="done")
+        for s in plan
+        if s.completes_when and s.completes_when in cumplidos
+        and s.status not in CERRADOS
+    )</code></pre>
+
+    <p>
+      Podría devolver el plan ya cerrado y sería una línea menos. No lo hace porque entonces el plan
+      dejaría de ser el pliegue del canal y pasaría a ser una función del canal más el estado del
+      mundo en el momento en que lo mirás. Emitiendo ops, para reconstruir el plan de un turno viejo
+      alcanza con <code>steps</code>.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 07 ============ -->
+<section class="leccion" id="l7">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">07</div>
+    <p class="tesis">El turno termina cuando el predicado levanta el veto, no cuando alguien emite un DONE nuevo.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>La terminación</h2>
+
+    <p>
+      Una célula devuelve lo que agrega y no puede borrar lo que otra dijo, así que no hay forma de
+      cancelar el DONE del executor. Y no hace falta, porque <code>vote</code> se junta por máximo y
+      CONTINUE es mayor que DONE. Alcanza con opinar más fuerte. Es exactamente el truco de
+      <code>grounded</code>, reusado sin cambiarle nada.
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 740 296" role="img" aria-label="Con el plan incompleto el voto del planner tapa el DONE del executor; con el plan completo vota QUIET y el DONE manda">
+        <text class="svg-s" x="30" y="24">QUIET  &lt;  DONE  &lt;  CONTINUE  &lt;  HALT</text>
+        <line class="svg-line" x1="30" y1="34" x2="330" y2="34" opacity=".3"/>
+
+        <text class="svg-t" x="30" y="70">el modelo contestó y el plan está incompleto</text>
+        <rect class="svg-box" x="30" y="82" width="200" height="26"/>
+        <text class="svg-l" x="46" y="100">executor → DONE</text>
+        <rect class="svg-box" x="30" y="112" width="200" height="26" style="stroke:var(--accent);opacity:.8"/>
+        <text class="svg-acc-t" x="46" y="130">planner → CONTINUE</text>
+        <text class="svg-l" x="248" y="118">max(...)  =</text>
+        <text class="svg-acc-t" x="350" y="118" style="font-weight:600">CONTINUE</text>
+        <text class="svg-s" x="450" y="118">el loop da otra vuelta,</text>
+        <text class="svg-s" x="450" y="134">con el aviso de qué falta</text>
+
+        <line class="svg-line" x1="30" y1="164" x2="710" y2="164" opacity=".3"/>
+
+        <text class="svg-t" x="30" y="196">el modelo contestó y no queda nada abierto</text>
+        <rect class="svg-box" x="30" y="208" width="200" height="26"/>
+        <text class="svg-l" x="46" y="226">executor → DONE</text>
+        <rect class="svg-box" x="30" y="238" width="200" height="26" style="stroke:var(--mech);opacity:.8"/>
+        <text class="svg-mech-t" x="46" y="256">planner → QUIET</text>
+        <text class="svg-l" x="248" y="244">max(...)  =</text>
+        <text class="svg-mech-t" x="350" y="244" style="font-weight:600">DONE</text>
+        <text class="svg-s" x="450" y="244">el turno termina</text>
+
+        <text class="svg-s" x="30" y="288">el planner no agrega ninguna forma nueva de terminar un turno: solo deja de tapar la que había</text>
+      </svg>
+      <figcaption>
+        Por eso QUIET es el neutro del voto y no un tercer estado raro. Una célula que no tiene nada
+        que decir sobre la terminación vota QUIET y desaparece del máximo.
+      </figcaption>
+    </figure>
+
+<pre><code>if contesto(seen) and not completo(plan):
+    if avisado(seen):
+        return Log(steps=movidas, fails=fallas + (INCOMPLETO,))
+    dicho = Message(Role.USER, f"{render_plan(plan)}\n\n{render_aviso(plan)}")
+    return Log(said=(dicho,), steps=movidas, fails=fallas, vote=Status.CONTINUE)</code></pre>
+
+    <p>
+      Avisa una vez. Si el modelo vuelve a contestar con pasos abiertos después del aviso, lo deja
+      terminar y anota el <code>Fail</code>: la respuesta sale, pero sale etiquetada. Insistir hasta
+      el tope de pasos serían doce llamadas para llegar a la misma conclusión, y el modelo que ignoró
+      el aviso una vez lo va a ignorar diez. Es la misma decisión que tomó <code>grounded</code>, y
+      conviene que las dos se comporten igual.
+    </p>
+
+    <p>
+      El aviso dice qué falta y qué hacer con cada cosa que falta, que no es lo mismo para los dos
+      tipos de paso:
+    </p>
+
+    <div class="checklist">
+<span class="rechazo">[plan] faltan pasos:</span> `cultivo`, `seguridad`, `fuente`.<br>
+Si ya los hiciste, cerralos vos en un bloque de código: mark("cultivo", "done"); mark("seguridad", "done").<br>
+Si alguno no aplica, `skip("id")` y explicá por qué en la respuesta.<br>
+<span class="compuerta">Estos los cierro yo cuando pase el hecho: `fuente` espera `cito_la_fuente`.</span><br>
+Después de eso, escribí la respuesta final.
+    </div>
+
+    <h3>Dos detalles que el código pidió y el diseño no tenía</h3>
+
+    <p>
+      <b>El aviso se detecta por contenido, y solo en los mensajes del usuario.</b>
+      <code>grounded</code> compara el mensaje entero, porque su aviso es una constante. Este no: nombra
+      los pasos que faltan, así que el texto cambia entre un paso y el siguiente, y encima viaja
+      pegado al estado del plan en el mismo mensaje. Con igualdad, un plan que se movió en el medio se
+      llevaba un aviso nuevo y el tope de "avisa una vez" no existía. Mirar solo los mensajes del
+      usuario cierra la otra punta: un modelo que copie la marca en su respuesta no puede apagarse el
+      aviso a sí mismo.
+    </p>
+
+    <p>
+      <b>El paso ya cerrado se rechaza por lo que es.</b> Decirle "lo cierro yo cuando se cumpla
+      <code>consulto_el_catalogo</code>" sobre un paso que esa compuerta cerró hace tres pasos es
+      falso: ya se cumplió. Ese op cae en el chequeo de abajo y se rechaza con el motivo verdadero,
+      que es que no cambia nada.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section class="leccion" id="l8">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">08</div>
+    <p class="tesis">Cuatro pasos, once movidas, un veto y un rechazo. Todo lo de arriba, funcionando junto.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>El turno completo</h2>
+
+    <p>
+      Esta es una corrida real sobre el catálogo agronómico, con el modelo guionado para que el
+      recorrido sea siempre el mismo. Las 39 fichas están en el REPL y nunca entran al prompt; el
+      plan arranca con cinco pasos que declara el host. Movete con las flechas o con los botones.
+    </p>
+
+    <div class="traza" id="traza" tabindex="0">
+      <div class="traza-head" id="chips"></div>
+      <div class="traza-cuerpo">
+        <div class="traza-conv" id="conv"></div>
+        <div class="traza-lado">
+          <p class="panel-tit">Quién agregó qué</p>
+          <table class="celdas" id="celdas"></table>
+          <p class="panel-tit" style="margin-top:18px">El plan, al cerrar el paso</p>
+          <div class="checklist" id="plan" style="margin:0;font-size:11.5px;line-height:1.75"></div>
+        </div>
+        <p class="traza-nota" id="nota"></p>
+      </div>
+      <div class="traza-pie">
+        <button class="nav-btn" id="prev" type="button">← anterior</button>
+        <button class="nav-btn" id="next" type="button">siguiente →</button>
+        <span class="paso-de" id="contador"></span>
+      </div>
+    </div>
+
+    <h3>Lo que cuesta, medido</h3>
+
+    <p>
+      La misma pregunta contra Gemini, con y sin la bandera, sobre el mismo código y el mismo día. Es
+      lo único que hay medido hasta ahora, y n=1 no decide nada: Gemini varía sola entre corridas, y
+      el repo ya tiene la escalera escrita para eso.
+    </p>
+
+    <div class="tabla-wrap bitacora">
+      <table>
+        <thead>
+          <tr><th>arm</th><th>n</th><th>tokens</th><th>turnos</th><th>qué salió</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>sin_plan</th><td class="num">1</td><td class="num">132.633</td><td class="num">7</td>
+            <td>dosis con fuente, y descartó un producto por cultivo no certificado</td>
+          </tr>
+          <tr class="arm">
+            <th>con_plan</th><td class="num">1</td><td class="num">95.362</td><td class="num">14</td>
+            <td>plan 5/5, los cinco puntos del contrato, dos <code>FUENTE</code>, y un paso perdido
+                en un <code>grep(min_line=...)</code> que no existe</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      El dato que sí vale de esa corrida no es el delta: es que el modelo <b>usó los verbos</b> sin
+      que se los nombre en el preámbulo, llamó a <code>mark()</code> en dos bloques distintos, y el
+      plan cerró entero. Lo demás se decide con la suite de nueve preguntas a n=3 contra el proveedor
+      que no pierde muestras, y el portón para prender la bandera por defecto es cero regresiones.
+    </p>
+
+    <div class="nota">
+      <span class="nota-tit">dónde se nombran los verbos</span>
+      En el turno del usuario, pegados al contrato, y <strong>no</strong> en el preámbulo. No es
+      gusto: el repo tiene medido que el mismo párrafo movido al <code>systemInstruction</code>
+      llevaba a <code>gemini-3.8-flash</code> con <code>thinking=low</code> a 0 de 12 corridas vivas,
+      contra 6 de 12 en el turno del usuario. Doce llamadas idénticas por variante, y la medición
+      repetida en tres rondas.
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section class="leccion" id="l9">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">09</div>
+    <p class="tesis">Las ausencias son diseño. Estas seis tienen fecha de vuelta o razón para no volver.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>Lo que no se construyó</h2>
+
+    <ul class="estado-lista">
+      <li>
+        <span class="est falta">afuera</span>
+        <span class="item">
+          <code>plans</code> como segundo canal
+          <span class="por">
+            Era la ruta del JSON en una cerca aparte: un canal para lo que el modelo proponía y otro
+            para lo admitido. Con los builtins pierde su consumidor, porque no hay parser, no hay
+            puerto nuevo y no hay una segunda llamada al modelo por paso. Vuelve el día que un
+            proveedor nos dé una tool nativa forzada.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">afuera</span>
+        <span class="item">
+          <code>revise</code>, o sea reescribir y borrar pasos
+          <span class="por">
+            Con <code>flex="acotado"</code> el modelo agrega, activa y descarta. No reescribe el
+            esqueleto del host ni borra un paso. Un agente que puede borrar el requisito que le
+            molesta no tiene requisitos.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">afuera</span>
+        <span class="item">
+          <code>gates(policy)</code> como célula aparte
+          <span class="por">
+            Las compuertas viven adentro del planner y se evalúan sobre el <code>Log</code> del paso.
+            Separarlas en su propia célula agrega un orden más que respetar y no compra nada todavía.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">afuera</span>
+        <span class="item">
+          slots, o el plan con datos adentro
+          <span class="por">
+            Un paso tiene id, intención, estado y compuerta. No tiene lugar para guardar la dosis que
+            encontró. Eso sería un segundo estado del turno compitiendo con el REPL, que ya guarda
+            variables y es mejor en eso.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">afuera</span>
+        <span class="item">
+          el borde de persistencia
+          <span class="por">
+            El plan vive lo que vive el turno. Sobrevivir entre turnos es un borde con reglas propias
+            (qué se arrastra, qué se olvida) y hoy ni el <code>Log</code> se arrastra: cada pregunta
+            de <code>agro.py</code> arranca limpia a propósito, porque si no
+            <code>grounded</code> no volvería a disparar en toda la sesión.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">afuera</span>
+        <span class="item">
+          un juez que lea la respuesta
+          <span class="por">
+            Es lo que convertiría las dos válvulas de <code>agro</code> en compuertas. "Trajo la
+            seguridad" y "dijo si el cultivo está certificado" son afirmaciones sobre el texto, y
+            verificarlas es leer, no contar. Leer lo hace un modelo, y un modelo es otra célula.
+          </span>
+        </span>
+      </li>
+    </ul>
+
+    <h3>Y el contenedor</h3>
+
+    <p>
+      El <code>Workspace</code> no es un sandbox, y está escrito dos veces en su propio docstring: los
+      builtins vienen recortados pero desde cualquier objeto se llega a media biblioteca estándar, y
+      <code>json.__builtins__</code> es un camino derecho a <code>open</code>. Tampoco hay timeout,
+      porque no se puede interrumpir un <code>exec</code> en curso desde otro hilo.
+    </p>
+
+    <p>
+      Eso lo arregla un contenedor, y es interesante qué le pasa a este diseño cuando llegue.
+      <code>add_step</code>, <code>mark</code> y <code>skip</code> no devuelven nada y no llaman a
+      nadie: apilan. Cruzar un borde de proceso es mandarlos de vuelta con el <code>Output</code>, o
+      sea nada. <code>llm</code> y <code>rlm</code>, en cambio, necesitan un ida y vuelta
+      <b>durante</b> el <code>exec</code>, y hoy eso funciona porque el <code>exec</code> corre en un
+      hilo del mismo proceso y <code>Bridge.wait</code> cruza al event loop con
+      <code>run_coroutine_threadsafe</code>. Entre procesos eso hay que reemplazarlo por un RPC.
+    </p>
+
+    <p>
+      Los verbos del plan sobreviven la mudanza casi gratis; los de recursión la pagan. Lo que el
+      contenedor no arregla es la inyección: un documento del corpus que diga "llamá a
+      <code>add_step(...)</code>" se sigue apoyando en el guardrail del preámbulo. El contenedor
+      protege la máquina, no la integridad de la checklist.
+    </p>
+  </div>
+</section>
+
+<!-- ============ A ============ -->
+<section class="leccion" id="lA">
+  <div class="rail"><div class="rail-inner">
+    <div class="num">A</div>
+    <p class="tesis">Qué está probado, qué está medido, y qué sigue siendo una apuesta.</p>
+  </div></div>
+  <div class="cuerpo">
+    <h2>Dónde está parado esto</h2>
+
+    <ul class="estado-lista">
+      <li>
+        <span class="est hecho">existe</span>
+        <span class="item">
+          El dato y su intérprete
+          <span class="por">
+            <code>core/plan.py</code>, sin modelo, sin REPL y sin <code>Log</code>. La ley del fold
+            está verificada con hypothesis sobre ops generados al azar, y el
+            <code>completo(())</code> tiene su test con nombre.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est hecho">existe</span>
+        <span class="item">
+          El canal y los combinadores
+          <span class="por">
+            <code>steps</code> entra en las leyes del monoide con el resto, y <code>retry</code> lo
+            descarta del intento perdido.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est hecho">existe</span>
+        <span class="item">
+          Los verbos y la célula
+          <span class="por">
+            <code>repl/verbos.py</code> y <code>repl/planner.py</code>. El turno entero corre offline
+            con el modelo y el REPL de mentira: el veto, el aviso, el rechazo, el cierre por
+            compuerta y la respuesta etiquetada cuando el modelo ignora el aviso.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">apagado</span>
+        <span class="item">
+          La bandera
+          <span class="por">
+            <code>agro.py --plan</code> y <code>evals.py --agro --plan</code>. Por defecto está
+            apagada, porque esto cambia la terminación del agente, que es lo más delicado que tiene.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">falta</span>
+        <span class="item">
+          La escalera
+          <span class="por">
+            Lo medido es un par n=1 contra Gemini. La lectura de verdad es n=3 sobre las nueve
+            preguntas agronómicas contra el proveedor que no pierde muestras, y para mover un default
+            hace falta n=6. El portón es cero regresiones, no un delta de costo lindo.
+          </span>
+        </span>
+      </li>
+      <li>
+        <span class="est falta">falta</span>
+        <span class="item">
+          Dos válvulas que deberían ser compuertas
+          <span class="por">
+            <code>cultivo</code> y <code>seguridad</code> los cierra el modelo, así que sobre esos dos
+            el plan dice lo mismo que decía la terminación vieja: que el modelo lo dijo. Es honesto y
+            no es suficiente.
+          </span>
+        </span>
+      </li>
+    </ul>
+
+    <div class="nota viva">
+      <span class="nota-tit">el límite que conviene tener en la cabeza</span>
+      Las compuertas son pisos, no pruebas. <code>log.reads &gt; 0</code> dice que el REPL devolvió
+      algo, no que sea lo que hacía falta; <code>FUENTE:</code> dice que hay una línea de fuente, no
+      que la ruta exista, y para eso el eval tiene su propio chequeo aparte. Esto sube el piso de lo
+      que el agente tiene que hacer antes de contestar. No convierte una respuesta en verdadera.
+    </div>
+  </div>
+</section>
+
+<div class="colofon">
+  <span>catalejo 0.1.0</span>
+  <span>Python 3.12+</span>
+  <span>httpx, y nada más en runtime</span>
+  <span>mypy strict</span>
+  <span>un canal nuevo, ocho combinadores intactos</span>
+</div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var NADA = "·";
+
+  var M = {
+    pedido: {
+      rol: "user · el pedido (recortado)",
+      txt: "tengo mosca blanca en tomate\n\n" +
+           "Para contestar esto:\n" +
+           "- Buscá en el catálogo antes de opinar.\n" +
+           "- Si hay producto, decí la dosis tal cual está...\n" +
+           "- Decí si el cultivo está en certified_crops...\n" +
+           "- Traé lo que diga safety...\n" +
+           "- Cerrá con una línea FUENTE: por archivo.\n\n" +
+           "Llevás una checklist del turno. La movés desde el mismo bloque de código:\n" +
+           "add_step(...) · mark(...) · skip(...)\n\n" +
+           "[plan] estado:\n" +
+           "[ ] buscar   [ ] dosis   [ ] cultivo   [ ] seguridad   [ ] fuente"
+    },
+    elipsis: { rol: "···", txt: "(los pasos anteriores)" },
+    b1: {
+      rol: "assistant",
+      txt: "```python\n" +
+           "mark(\"buscar\", \"active\")\n" +
+           "print(grep(catalogo, \"mosca blanca\", doc=\"metaveria\"))\n" +
+           "```"
+    },
+    r1: {
+      rol: "user · repl",
+      txt: "[repl] salida:\n" +
+           "7 líneas casan con 'mosca blanca' en productos/metaveria-40-ew.md.\n" +
+           "productos/metaveria-40-ew.md:4369:       \"name\": \"Mosca blanca\",\n" +
+           "productos/metaveria-40-ew.md:4487: - Especialmente efectivo para ...\n" +
+           "(recortado)"
+    },
+    p1: {
+      rol: "user · plan",
+      txt: "[plan] estado:\n" +
+           "[x] buscar: encontrar qué productos sirven para esa plaga en ese cultivo\n" +
+           "[x] dosis: traer la dosis como está: número, unidad, base, vía y agua\n" +
+           "[ ] cultivo: decir si el cultivo está en certified_crops\n" +
+           "[ ] seguridad: traer safety: incompatibilidades, horas, pH, días\n" +
+           "[ ] fuente: cerrar con una línea FUENTE por archivo (lo cierro yo con `cito_la_fuente`)"
+    },
+    pr1: { rol: "assistant", txt: "Para mosca blanca en tomate: Metaveria 40 EW." },
+    p2: {
+      rol: "user · plan",
+      txt: "[plan] estado:\n" +
+           "[x] buscar   [x] dosis   [ ] cultivo   [ ] seguridad   [ ] fuente\n\n" +
+           "[plan] faltan pasos: `cultivo`, `seguridad`, `fuente`.\n" +
+           "Si ya los hiciste, cerralos vos en un bloque de código:\n" +
+           "mark(\"cultivo\", \"done\"); mark(\"seguridad\", \"done\").\n" +
+           "Si alguno no aplica, `skip(\"id\")` y explicá por qué en la respuesta.\n" +
+           "Estos los cierro yo cuando pase el hecho: `fuente` espera `cito_la_fuente`.\n" +
+           "Después de eso, escribí la respuesta final."
+    },
+    b2: {
+      rol: "assistant",
+      txt: "```python\n" +
+           "mark(\"cultivo\", \"done\")\n" +
+           "mark(\"seguridad\", \"done\")\n" +
+           "mark(\"buscar\", \"done\")\n" +
+           "print(productos[11][\"seguridad\"])\n" +
+           "```"
+    },
+    r2: { rol: "user · repl", txt: "[repl] salida:\n{}" },
+    p3: {
+      rol: "user · plan",
+      txt: "[plan] estado:\n" +
+           "[x] buscar   [x] dosis   [x] cultivo   [x] seguridad   [ ] fuente\n" +
+           "rechazado mark(\"buscar\", \"done\"): no cambia nada del plan"
+    },
+    pr2: {
+      rol: "assistant",
+      txt: "Metaveria 40 EW, 1.0-2.14 L/ha foliar, 200-400 l/ha de agua.\n" +
+           "FUENTE: productos/metaveria-40-ew.md"
+    }
+  };
+
+  function plan(b, d, c, s, f) {
+    return [
+      ["buscar", b, "consulto_el_catalogo"],
+      ["dosis", d, "mire_una_ficha"],
+      ["cultivo", c, ""],
+      ["seguridad", s, ""],
+      ["fuente", f, "cito_la_fuente"]
+    ];
+  }
+
+  var PASOS = [
+    {
+      tit: "1 · consulta",
+      conv: [M.pedido, M.b1, M.r1, M.p1],
+      desde: 1,
+      celdas: [
+        { quien: "worker", said: 1, steps: NADA, vote: "QUIET" },
+        { quien: "executor", said: 1, steps: NADA, vote: "CONTINUE" },
+        { quien: "grounded", said: NADA, steps: NADA, vote: NADA },
+        { quien: "planner", said: 1, steps: 8, vote: "QUIET", hi: true }
+      ],
+      paso: { said: 3, steps: 8, vote: "CONTINUE" },
+      acum: { said: 3, steps: 8, vote: "CONTINUE" },
+      plan: plan("x", "x", " ", " ", " "),
+      nota: "El modelo activó <code>buscar</code> y consultó en el mismo bloque. Al cerrar el paso, " +
+            "<code>consulto_el_catalogo</code> ya se cumple porque <code>reads</code> pasó a 1, y " +
+            "<code>mire_una_ficha</code> también, porque el hit vino prefijado con " +
+            "<code>productos/metaveria-40-ew.md:</code>. <strong>Dos pasos se cerraron sin que el " +
+            "modelo los marque.</strong> De las ocho movidas, cinco son la semilla del host, una es " +
+            "el <code>active</code> que escribió él y dos son los <code>done</code> de la máquina."
+    },
+    {
+      tit: "2 · contesta temprano",
+      conv: [M.pedido, M.b1, M.r1, M.p1, M.pr1, M.p2],
+      desde: 4,
+      celdas: [
+        { quien: "worker", said: 1, steps: NADA, vote: "QUIET" },
+        { quien: "executor", said: NADA, steps: NADA, vote: "DONE" },
+        { quien: "grounded", said: NADA, steps: NADA, vote: NADA },
+        { quien: "planner", said: 1, steps: NADA, vote: "CONTINUE", hi: true }
+      ],
+      paso: { said: 2, steps: NADA, vote: "CONTINUE" },
+      acum: { said: 5, steps: 8, vote: "CONTINUE" },
+      plan: plan("x", "x", " ", " ", " "),
+      nota: "Contestó con tres pasos abiertos. El executor votó DONE porque no hubo cerca; el planner " +
+            "votó CONTINUE y el máximo se queda con CONTINUE, así que el turno sigue. " +
+            "<strong>Nadie canceló el DONE de nadie.</strong> El aviso nombra los tres y separa lo que " +
+            "le toca a cada uno: dos los cierra él, uno lo cierra la compuerta. Y es el único aviso " +
+            "que va a salir en todo el turno."
+    },
+    {
+      tit: "3 · cierra las válvulas",
+      conv: [M.elipsis, M.pr1, M.p2, M.b2, M.r2, M.p3],
+      desde: 3,
+      celdas: [
+        { quien: "worker", said: 1, steps: NADA, vote: "QUIET" },
+        { quien: "executor", said: 1, steps: NADA, vote: "CONTINUE" },
+        { quien: "grounded", said: NADA, steps: NADA, vote: NADA },
+        { quien: "planner", said: 1, steps: 2, vote: "QUIET", hi: true }
+      ],
+      paso: { said: 3, steps: 2, vote: "CONTINUE" },
+      acum: { said: 8, steps: 10, vote: "CONTINUE" },
+      plan: plan("x", "x", "x", "x", " "),
+      nota: "Cerró las dos válvulas, que son los pasos sin compuerta, y de paso intentó " +
+            "<code>mark(\"buscar\", \"done\")</code> sobre un paso que su compuerta ya había cerrado. " +
+            "Rechazado, y el motivo que vuelve es el verdadero: no cambia nada del plan. De los tres " +
+            "<code>mark</code> que escribió, entraron dos."
+    },
+    {
+      tit: "4 · contesta",
+      conv: [M.elipsis, M.b2, M.r2, M.p3, M.pr2],
+      desde: 4,
+      celdas: [
+        { quien: "worker", said: 1, steps: NADA, vote: "QUIET" },
+        { quien: "executor", said: NADA, steps: NADA, vote: "DONE" },
+        { quien: "grounded", said: NADA, steps: NADA, vote: NADA },
+        { quien: "planner", said: NADA, steps: 1, vote: "QUIET", hi: true }
+      ],
+      paso: { said: 1, steps: 1, vote: "DONE" },
+      acum: { said: 9, steps: 11, vote: "DONE" },
+      plan: plan("x", "x", "x", "x", "x"),
+      nota: "La respuesta trae <code>FUENTE:</code>, así que <code>cito_la_fuente</code> se cumple " +
+            "sobre el mismo mensaje que la contiene y <code>fuente</code> cierra. El plan queda " +
+            "completo, el planner vota QUIET, el DONE del executor manda y el turno termina sin " +
+            "<code>fails</code>. Notá que en este paso el planner <strong>no dijo nada</strong>: " +
+            "dibujar el estado después de la respuesta final sería pagar tokens que nadie lee."
+    }
+  ];
+
+  var i = 0;
+  var elChips = document.getElementById("chips");
+  var elConv = document.getElementById("conv");
+  var elCel = document.getElementById("celdas");
+  var elPlan = document.getElementById("plan");
+  var elNota = document.getElementById("nota");
+  var elCont = document.getElementById("contador");
+  var elPrev = document.getElementById("prev");
+  var elNext = document.getElementById("next");
+
+  PASOS.forEach(function (p, n) {
+    var b = document.createElement("button");
+    b.className = "chip";
+    b.type = "button";
+    b.textContent = p.tit;
+    b.addEventListener("click", function () { i = n; render(); });
+    elChips.appendChild(b);
+  });
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function celda(v, hi) {
+    if (v === NADA || v === undefined) return '<td class="nada">' + NADA + "</td>";
+    return "<td" + (hi ? ' class="hi"' : "") + ">" + v + "</td>";
+  }
+
+  function fila(quien, c, cls) {
+    var tag = cls ? ' class="' + cls + '"' : "";
+    return "<tr" + tag + "><th>" + quien + "</th>" +
+      celda(c.said, c.hi) + celda(c.steps, c.hi) + celda(c.vote, c.hi) + "</tr>";
+  }
+
+  function marca(m) {
+    return m === "x"
+      ? '<span class="marca cerrado">[x]</span>'
+      : '<span class="marca">[ ]</span>';
+  }
+
+  function render() {
+    var p = PASOS[i];
+
+    Array.prototype.forEach.call(elChips.children, function (b, n) {
+      b.setAttribute("aria-current", n === i ? "true" : "false");
+    });
+
+    elConv.innerHTML = p.conv.map(function (m, n) {
+      var cls = "dicho" + (n >= p.desde ? " nuevo" : "");
+      return '<div class="' + cls + '"><span class="rol">' + m.rol +
+        '</span><p class="txt">' + esc(m.txt) + "</p></div>";
+    }).join("");
+
+    elCel.innerHTML =
+      "<thead><tr><th></th><th>said</th><th>steps</th><th>vote</th></tr></thead><tbody>" +
+      p.celdas.map(function (c) { return fila(c.quien, c, ""); }).join("") +
+      fila("el paso", p.paso, "total") +
+      fila("acumulado", p.acum, "acum") +
+      "</tbody>";
+
+    elPlan.innerHTML = p.plan.map(function (s) {
+      var cola = s[2] && s[1] !== "x"
+        ? ' <span class="compuerta">← ' + s[2] + "</span>"
+        : "";
+      return marca(s[1]) + " " + s[0] + cola;
+    }).join("<br>");
+
+    elNota.innerHTML = p.nota;
+    elCont.textContent = (i + 1) + " de " + PASOS.length;
+    elPrev.disabled = i === 0;
+    elNext.disabled = i === PASOS.length - 1;
+  }
+
+  elPrev.addEventListener("click", function () { if (i > 0) { i--; render(); } });
+  elNext.addEventListener("click", function () { if (i < PASOS.length - 1) { i++; render(); } });
+
+  document.getElementById("traza").addEventListener("keydown", function (e) {
+    if (e.key === "ArrowLeft" && i > 0) { i--; render(); }
+    if (e.key === "ArrowRight" && i < PASOS.length - 1) { i++; render(); }
+  });
+
+  render();
+})();
+</script>
