@@ -338,8 +338,50 @@ def pedido(pregunta: str, historia: tuple[tuple[str, str], ...]) -> str:
     )
 
 
+SIN_CONSULTAR = "No pude revisar el catálogo, así que no tengo qué recomendarte. Volvé a preguntar."
+
+
 def final(out: Log) -> str:
-    """El último dicho que no es código, que es la definición de respuesta en todo el repo."""
+    """El último dicho que no es código, salvo que no se haya consultado nada.
+
+    La terminación de este agente es sintáctica: prosa quiere decir terminé. El
+    modelo, en cambio, tiene tres estados y solo uno se ve distinto desde afuera,
+    así que un turno donde está pensando en voz alta entra por esta función como
+    respuesta final. Medido contra luna con esfuerzo bajo, una corrida contestó
+    esto, literalmente:
+
+        Respond? We need code block only to execute. But final instruction says
+        code block makes execution. Do it.
+
+    Es el modelo deliberando sobre la última regla del preámbulo. La API no tiene
+    canal de razonamiento en chat/completions (`message` trae `content`, `refusal`
+    y nada más, y los `reasoning_tokens` se facturan sin volver), así que eso llegó
+    como contenido y no hay forma de distinguirlo por la forma.
+
+    `grounded` es lo único que lo ve, y avisa una vez: si el modelo lo ignora anota
+    el `Fail` y deja salir la respuesta etiquetada. La etiqueta llega al CLI como
+    una línea gris y no llega a nadie detrás de una API. Así que acá se corta. Una
+    respuesta que no consultó el catálogo no es una respuesta con una advertencia,
+    es un no sé, y en un catálogo agronómico la diferencia se aplica en una
+    hectárea.
+
+    El dicho crudo sigue en el `Log` para auditar. Lo que cambia es lo que se
+    sirve.
+
+    La frase es de ESTE cliente y no del motor, y por eso vive acá. El que
+    pregunta es una persona en una terminal, así que lo único que puede recibir es
+    texto y lo que necesita saber es que no hay recomendación. Por qué no la hay
+    es asunto nuestro: nombrarle la memoria, el grounding o las fichas es
+    explicarle nuestra plomería a alguien que quería saber qué echarle al cultivo.
+
+    El servicio no usa esta frase ni la quiere. Su `final` devuelve "" y la
+    respuesta viaja con `fundada: false` y `fails` aparte, porque del otro lado
+    hay una app o un agente que lee un booleano, no una oración. Y `evals.final`
+    no reemplaza nada, porque ahí el texto crudo es el dato. Tres lectores, tres
+    políticas, un solo hecho abajo: `Fail("grounding", ...)`.
+    """
+    if any(f.who == "grounding" for f in out.fails):
+        return SIN_CONSULTAR
     for m in reversed(out.said):
         if m.role is Role.ASSISTANT and "```" not in m.text:
             return m.text.strip()

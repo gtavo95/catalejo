@@ -215,6 +215,14 @@ async def correr(
 
 
 def final(out: Log) -> str:
+    """El último dicho en prosa, CRUDO.
+
+    A propósito no hace lo que `agro.final`, que reemplaza una respuesta sin
+    fundamento por un "no sé". Acá el texto tal como salió es el dato: es lo que
+    se imprime bajo `contestó:` cuando un caso falla, y es lo que dejó ver que el
+    modelo estaba deliberando en vez de contestar. Un corredor de exámenes que
+    limpia lo que mide no sirve para diagnosticar.
+    """
     for m in reversed(out.said):
         if m.role is Role.ASSISTANT and "```" not in m.text:
             return m.text.strip()
