@@ -1,6 +1,7 @@
 import asyncio
 
 from catalejo.repl import Workspace, grep
+from catalejo.repl.workspace import MAX_PLEGADOS, _PLEGADOS
 
 
 class TestWorkspace:
@@ -267,3 +268,54 @@ class TestGrepPorDocumento:
 
         assert out.startswith("100 líneas casan con 'linea' en a.md; estas son las primeras 3.")
         assert len(out.splitlines()) == 4
+
+
+class TestPlegadoGuardado:
+    """El caché del plegado. Es invisible para el modelo: la única forma de que se
+    note es que una respuesta cambie, y eso es exactamente lo que se testea acá."""
+
+    def setup_method(self) -> None:
+        _PLEGADOS.clear()
+
+    def test_la_segunda_llamada_da_lo_mismo_que_la_primera(self) -> None:
+        texto = "=== fichas/plagas.md ===\nel pulgon come\notra cosa\nPULGÓN de nuevo"
+
+        primera = grep(texto, "pulgon")
+
+        assert grep(texto, "pulgon") == primera
+        assert primera.startswith("2 líneas casan")
+
+    def test_un_texto_distinto_no_hereda_el_plegado_de_otro(self) -> None:
+        """Si la clave se reusara, el segundo grep contestaría sobre el primer texto."""
+        uno = "araña roja"
+        otro = "mosca blanca"
+
+        assert grep(uno, "arana").startswith("1 línea casa")
+        assert grep(otro, "arana").startswith("0 líneas")
+
+    def test_exacto_no_paga_el_plegado(self) -> None:
+        """Sobre el corpus de Go plegar es trabajo tirado, así que no se hace."""
+        texto = "Plan\nplan"
+
+        assert grep(texto, "Plan", exacto=True).startswith("1 línea casa")
+        assert _PLEGADOS[id(texto)].campo is None
+
+    def test_el_mismo_texto_plegado_despues_de_un_exacto(self) -> None:
+        """Primero exacto y después no: el campo se calcula recién ahí, y bien."""
+        texto = "Pulgón\nplan"
+
+        grep(texto, "Pulgón", exacto=True)
+
+        assert grep(texto, "pulgon").startswith("1 línea casa")
+        assert _PLEGADOS[id(texto)].campo == ["Pulgon", "plan"]
+
+    def test_no_guarda_mas_que_el_tope(self) -> None:
+        """Acotado por PARALELO: un fanout entero cabe y el corpus no se duplica sin fin."""
+        textos = [f"linea {i}" for i in range(MAX_PLEGADOS + 5)]
+
+        for texto in textos:
+            grep(texto, "linea")
+
+        assert len(_PLEGADOS) == MAX_PLEGADOS
+        assert id(textos[-1]) in _PLEGADOS
+        assert id(textos[0]) not in _PLEGADOS
