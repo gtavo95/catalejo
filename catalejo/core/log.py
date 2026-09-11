@@ -17,6 +17,7 @@ from enum import IntEnum
 from typing import Literal
 
 from .message import Conversation
+from .plan import PlanOp
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -59,10 +60,17 @@ class Log:
     """Todo lo dicho, en canales. Cada canal trae su propia álgebra.
 
     said   una lista. El orden es el significado, así que solo concatena.
+    steps  una lista. Los ops que movieron el plan, en el orden en que se movió.
     fails  un conjunto. El mismo error reportado dos veces es un error.
     vote   el máximo del orden de Status.
     spent  una suma. Los tokens que costó todo esto.
     reads  una suma. Cuántas veces el REPL devolvió algo.
+
+    `steps` no es el plan, son las MOVIDAS del plan. El plan se calcula
+    plegándolas con `proyectar`, así que no hay una copia que pueda quedar
+    desincronizada y cada célula ve el plan tal como estaba cuando corrió. Es el
+    único canal que trae un tipo propio, y trae uno por la misma razón que `said`
+    trae `Message`: el álgebra ya declara la forma de lo que viaja.
 
     `reads` es el canal que dice si la respuesta tiene de dónde salir. En cero, el
     modelo no consultó nada y lo que conteste sale de su memoria, no del contexto.
@@ -71,6 +79,7 @@ class Log:
     """
 
     said: Conversation = ()
+    steps: tuple[PlanOp, ...] = ()
     fails: tuple[Fail, ...] = ()
     vote: Status = Status.QUIET
     spent: int = 0
@@ -95,6 +104,7 @@ def merge(a: Log, b: Log) -> Log:
     """
     return Log(
         said=a.said + b.said,
+        steps=a.steps + b.steps,
         fails=tuple(sorted(set(a.fails) | set(b.fails))),
         vote=max(a.vote, b.vote),
         spent=a.spent + b.spent,
@@ -114,7 +124,7 @@ def normal(log: Log) -> Log:
 
 type Rule = Callable[[Log], Log]
 
-type Channel = Literal["said", "fails", "vote", "spent", "reads"]
+type Channel = Literal["said", "steps", "fails", "vote", "spent", "reads"]
 
 
 def drop(*channels: Channel) -> Rule:

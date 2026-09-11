@@ -7,13 +7,22 @@ verifica que la ley aguanta siempre. Eso encuentra los casos que no se te ocurre
 from hypothesis import given
 from hypothesis import strategies as st
 
-from catalejo.core import ZERO, Fail, Log, Message, Role, Status, merge, normal
+from catalejo.core import ZERO, Fail, Log, Message, PlanOp, Role, Status, merge, normal
 
 messages = st.builds(Message, role=st.sampled_from(Role), text=st.text(max_size=6))
 fails = st.builds(Fail, who=st.text(max_size=3), reason=st.text(max_size=6))
+steps = st.builds(
+    PlanOp,
+    verb=st.sampled_from(["add_step", "mark", "skip"]),
+    id=st.sampled_from(["a", "b"]),
+    intent=st.just(""),
+    status=st.sampled_from(["todo", "done"]),
+    completes_when=st.just(""),
+)
 logs = st.builds(
     Log,
     said=st.lists(messages, max_size=3).map(tuple),
+    steps=st.lists(steps, max_size=3).map(tuple),
     fails=st.lists(fails, max_size=3).map(tuple),
     vote=st.sampled_from(Status),
     spent=st.integers(min_value=0, max_value=1000),
@@ -67,6 +76,13 @@ class TestConmutatividad:
 
         assert merge(a, b) != merge(b, a)
 
+    def test_no_vale_en_steps(self) -> None:
+        """Es un plan: agregar un paso y marcarlo no es lo mismo al revés."""
+        a = Log(steps=(PlanOp("add_step", "a"),))
+        b = Log(steps=(PlanOp("mark", "a", status="done"),))
+
+        assert merge(a, b) != merge(b, a)
+
 
 class TestIdempotencia:
     """Vale en fails y vote, y no en said, spent ni reads. Por eso reintentar una
@@ -85,6 +101,13 @@ class TestIdempotencia:
         a = normal(Log(said=(Message(Role.ASSISTANT, "hola"),)))
 
         assert len(merge(a, a).said) == 2
+
+    def test_no_vale_en_steps(self) -> None:
+        """El canal no deduplica y no le hace falta: `aplicar` es la identidad
+        cuando el op no cambia nada, así que un op repetido no mueve el plan."""
+        a = normal(Log(steps=(PlanOp("add_step", "a"),)))
+
+        assert len(merge(a, a).steps) == 2
 
     def test_no_vale_en_reads(self) -> None:
         """Consultar dos veces son dos consultas."""
@@ -106,6 +129,12 @@ class TestCanales:
         b = Log(said=(Message(Role.ASSISTANT, "dos"),))
 
         assert [m.text for m in merge(a, b).said] == ["uno", "dos"]
+
+    def test_steps_concatena_en_orden(self) -> None:
+        a = Log(steps=(PlanOp("add_step", "uno"),))
+        b = Log(steps=(PlanOp("add_step", "dos"),))
+
+        assert [op.id for op in merge(a, b).steps] == ["uno", "dos"]
 
     def test_fails_es_un_conjunto(self) -> None:
         caido = Fail("web", "timeout")

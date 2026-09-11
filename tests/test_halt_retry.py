@@ -12,6 +12,7 @@ from catalejo.core import (
     Fail,
     Log,
     Message,
+    PlanOp,
     Role,
     Status,
     fanout,
@@ -54,6 +55,7 @@ def inestable(falla_hasta: int, marcas: list[int], *, spent: int = 10) -> Cell:
             vote=Status.CONTINUE if roto else Status.DONE,
             spent=spent,
             reads=1,
+            steps=(PlanOp("add_step", f"paso {intento}"),),
         )
 
     return cell
@@ -129,6 +131,14 @@ class TestRetry:
         out = await retry(inestable(2, []), attempts=3)(ZERO)
 
         assert out.reads == 1
+
+    async def test_los_pasos_del_perdido_no_dejan_el_plan_movido(self) -> None:
+        """Un intento que cerró un paso y después reventó dejaría la checklist
+        avanzada por un turno que nadie se quedó, y un paso cerrado es justo lo
+        que nadie vuelve a mirar."""
+        out = await retry(inestable(2, []), attempts=3)(ZERO)
+
+        assert out.steps == (PlanOp("add_step", "paso 3"),)
 
     async def test_el_intento_ve_las_fallas_de_los_anteriores(self) -> None:
         marcas: list[int] = []
