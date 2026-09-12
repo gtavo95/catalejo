@@ -21,34 +21,30 @@ Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es 
 y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la inyección;
 para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 4.
 
-## 2. La cabecera `=== ruta ===` cuenta como hit
+## 2. El A/B de `--citas`
 
-`grep` recorre todas las líneas y la cabecera es una línea más que además contiene la ruta, así que
-un patrón que nombra un producto o una carpeta casa contra el delimitador. Medido sobre el bundle:
-`productos` da 279 hits de los cuales 39 son cabeceras (14%), `ontologia` 9 de 24 (37%), `viventem`
-2 de 19.
-
-En un agente cuyo argumento es contar bien, eso infla el total que anuncia la primera línea y gasta
-tokens en líneas sin contenido. El arreglo es un `continue` en el loop de `grep`, después de la
-bookkeeping que ya detecta la cabecera con `CABECERA`. Barato, y cambia el número que ve el modelo,
-así que lleva fila en la bitácora.
-
-**Va antes que cualquier A/B nuevo.** Si no, `max_hits` y `doc=` se miden contra totales inflados y
-hay que re-baselinear dos veces. Ya hay uno esperando: `--citas` (palanca `cita_cerrada`, arms
-`sin_cita`/`con_cita`) está cableado y con tests, y se mide contra el baseline que salga de acá.
+Está cableado y con tests (`citas.py`, palanca `cita_cerrada`, arms `sin_cita`/`con_cita`), y su
+baseline ya existe: la fila `cabecera_por_documento por_documento` de la bitácora, 9/9 con luna.
 Con luna el Δ esperado es cero tokens y cero regresiones: zompopo ya pasa 3/3 sin la célula, que
-es seguro y no cura.
+es seguro y no cura. Va con `uv run --env-file .env evals.py --agro --openai --citas --repeats=3`.
 
-## 3. El grep que afloja el patrón cuando devuelve cero
+## 3. El grep que afloja el patrón cuando devuelve cero (rebajado por el 4)
 
 El cero es el estado donde el modelo tiene menos información y más incentivo a rellenar, y es
 exactamente donde se inventó las tres fichas. Hoy `grep` dice "0 líneas casan" y lo suelta ahí.
 
 Gemini CLI hace auto-enrichment: cuando el resultado sale flaco, ensancha sin que se lo pidan. No
 se puede copiar tal cual, porque ensanchar en silencio es la misma mentira que el tope de 50. La
-regla tiene que ser: ensanchar, decir con todas las letras qué se probó, y cerrar con la frase que
-evita la invención. "0 con 'zompopo', 0 con 'zompopos', 0 con 'hormiga arriera'. El catálogo no
-tiene esa plaga."
+regla tendría que ser: ensanchar, decir con todas las letras qué se probó, y cerrar con la frase
+que evita la invención. "0 con 'zompopo', 0 con 'zompopos', 0 con 'hormiga arriera'. El catálogo
+no tiene esa plaga."
+
+Rebajado porque en un corpus con ontología, que es el caso principal, `ontologia/objetivos.md`
+está adentro del texto: el cero de `grep` ya es una afirmación sobre fichas y vocabulario
+juntos, y con la cabecera por documento un hit en `ontologia/` se distingue de uno en una ficha
+sin abrir nada. Lo que falta no es ensanchar a ciegas sino que el modelo lo sepa y pueda
+recorrer padre y alias con estructura, que es el punto 4. Vuelve si un corpus sin ontología lo
+pide.
 
 ## 4. La ontología como dato, no como chequeo de prosa
 
@@ -63,7 +59,7 @@ parseado de las tablas `| id | etiqueta | padre | alias |` (71 entradas), más u
 `CONTRATO`: "si la plaga no está en `objetivos`, decilo antes de recomendar". El modelo ya puede
 hacer `grep(catalogo, 'zompopo')` y recibir cero porque `ontologia/` está en el corpus; esto le da
 el conjunto cerrado para que el cero sea una afirmación y no una ausencia. Es palanca de prompt y
-builtin, lleva A/B, y va después de la cabecera como todos.
+builtin, y lleva A/B.
 
 ## 5. El two-phase para rescatar el `doc=`
 

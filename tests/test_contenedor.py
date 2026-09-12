@@ -111,7 +111,7 @@ class TestContenedor:
         try:
             out = await c.run("print(grep(ctx, 'pulgon'))")
 
-            assert out.stdout.startswith("2 líneas casan con 'pulgon'.")
+            assert out.stdout.startswith("2 líneas casan con 'pulgon' en fichas/plagas.md.")
             assert "fichas/plagas.md:2: el pulgon come" in out.stdout
         finally:
             c.cerrar()

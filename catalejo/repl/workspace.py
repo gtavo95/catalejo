@@ -85,7 +85,8 @@ CABECERA = re.compile(r"^=== (.+) ===$")
 HERRAMIENTAS = (
     "Es Python real con los builtins recortados: no hay `import`, `open` ni `eval`. "
     "Tienes `grep(texto, patron)` para expresiones regulares: devuelve las líneas que "
-    "casan, numeradas, con el total en la primera línea. Muestra hasta 50; si hay más, "
+    "casan, numeradas, y la primera línea dice el total y, si el texto trae documentos, "
+    "en cuáles y cuántas en cada uno. Muestra hasta 50; si hay más, "
     "sube el tope con `grep(texto, patron, max_hits=500)` o afina el patrón. No distingue "
     "mayúsculas ni acentos, así que `pulgon` encuentra `Pulgón` y `arana` encuentra "
     "`araña`; cuando el caso importe, `grep(texto, patron, exacto=True)`. Tienes `json` "
@@ -94,7 +95,9 @@ HERRAMIENTAS = (
     "`ruta:linea: contenido`, así que no hace falta que busques a qué archivo pertenece. "
     "Ese prefijo se agrega al imprimir y NO es parte de lo que se busca: un patrón que lo "
     "incluya, como `productos/x\\.md:.*dosis`, no casa nunca y te devuelve cero. Para mirar un "
-    "solo documento, `grep(texto, patron, doc='x')`, que compara contra la ruta. "
+    "solo documento, `grep(texto, patron, doc='x')`, que compara contra la ruta. La línea "
+    "`=== ruta ===` no es contenido: si el patrón casa con ella, la primera línea te nombra "
+    "el documento sin sumarlo al total. "
     "El resto de Python funciona normal: rebanar, `len`, comprensiones, `sorted`."
 )
 
@@ -231,6 +234,25 @@ def grep(
     Una corrida se fue a 108 mil tokens haciendo justamente eso. El dato ya estaba en
     el texto y no viajaba con el resultado; ahora viaja.
 
+    La primera línea habla en documentos, porque en un corpus de fichas la unidad es
+    la ficha y no la línea. Medido sobre el catálogo: `pulgon` son 24 líneas en 3
+    documentos (segador 12, objetivos 7, novitrap 5) y `cogollero` 6 en 2. Esa lista
+    es el esqueleto de la respuesta, qué productos y aparte qué dice el vocabulario,
+    y antes el modelo la reconstruía leyendo 24 prefijos. Va ordenada por cantidad
+    de líneas y con el mismo tope que las líneas, anunciado igual.
+
+    La cabecera `=== ruta ===` no es contenido y no cuenta. Como contiene la ruta, un
+    patrón que nombra un producto o una carpeta casaba con ella: `productos` daba
+    120 líneas de las que 39 eran cabeceras, y `viventem` 13 con 1. En un agente
+    cuyo argumento es contar bien, eso es un total inflado. Pero saltarla en
+    silencio convierte `grep(ctx, '===')`, que es la forma natural de listar los
+    documentos de un texto sin índice, en un cero falso, y `bio-bpbs` daría una
+    línea suelta del índice sin decir que la ficha existe con ese nombre. Así que
+    cuando el patrón casa con una cabecera, la primera línea nombra el documento y
+    no lo suma. Lo que se compra es el número correcto y el resumen por documento;
+    los tokens casi no cambian, porque bajo el tope las cabeceras eran líneas
+    baratas y su lugar lo ocupan líneas de contenido más largas.
+
     Que pliega va dicho en `HERRAMIENTAS` y no en la cabecera de cada resultado,
     porque es una propiedad fija de la herramienta y no un hecho de esta corrida.
     La cabecera dice lo que cambia entre llamada y llamada, que es cuántas hay y
@@ -252,8 +274,10 @@ def grep(
     lineas, campo = _plegar(texto, plegar=not exacto)
     rx = re.compile(patron) if exacto else re.compile(sin_acento(patron), re.IGNORECASE)
     filtro = sin_acento(doc).lower()
-    hits = []
+    hits: list[str] = []
     mirados: list[str] = []
+    por_doc: dict[str, int] = {}
+    cabeceras: list[str] = []
     actual = ""
     dentro = not filtro
     for i, (original, buscable) in enumerate(zip(lineas, campo), 1):
@@ -263,29 +287,59 @@ def grep(
             dentro = not filtro or filtro in sin_acento(actual).lower()
             if dentro and filtro:
                 mirados.append(actual)
+            if dentro and rx.search(buscable):
+                cabeceras.append(actual)
+            continue
         if dentro and rx.search(buscable):
             hits.append(f"{actual}:{i}: {original}" if actual else f"{i}: {original}")
+            if actual:
+                por_doc[actual] = por_doc.get(actual, 0) + 1
     if filtro and not mirados:
         return (
             f"ningún documento casa con {doc!r}, así que no se buscó nada. `doc` se compara "
             f"contra la ruta de la línea `=== ruta ===`, no contra el contenido."
         )
-    if len(mirados) == 1:
+    ranking = sorted(por_doc.items(), key=lambda par: -par[1])
+    lista = _lista([f"{ruta} ({n})" for ruta, n in ranking], max_hits)
+    if filtro and len(mirados) == 1:
         ambito = f" en {mirados[0]}"
-    elif mirados:
+    elif filtro and not ranking:
         ambito = f" en los {len(mirados)} documentos que casan con {doc!r}"
+    elif filtro and len(ranking) == len(mirados):
+        ambito = f" en los {len(mirados)} documentos que casan con {doc!r}: {lista}"
+    elif filtro:
+        ambito = f" en {len(ranking)} de los {len(mirados)} documentos que casan con {doc!r}: {lista}"
+    elif len(ranking) == 1:
+        ambito = f" en {ranking[0][0]}"
+    elif ranking:
+        ambito = f" en {len(ranking)} documentos: {lista}"
     else:
         ambito = ""
     casan = "casa" if len(hits) == 1 else "casan"
     linea = "línea" if len(hits) == 1 else "líneas"
     cabecera = f"{len(hits)} {linea} {casan} con {patron!r}{ambito}."
     if len(hits) > max_hits:
+        resto = "subí max_hits, afina el patrón o acota con doc=" if por_doc else "subí max_hits o afina el patrón"
         cabecera = (
             f"{len(hits)} líneas casan con {patron!r}{ambito}; estas son las primeras "
-            f"{max_hits}. Para el resto subí max_hits o afina el patrón."
+            f"{max_hits}. Para el resto {resto}."
         )
         hits = hits[:max_hits]
+    sueltas = [ruta for ruta in cabeceras if ruta not in por_doc]
+    if sueltas:
+        cuantos = f"{len(sueltas)} documento" + ("s" if len(sueltas) != 1 else "")
+        cabecera += (
+            f" La cabecera `=== ruta ===` de {cuantos}{' más' if por_doc else ''} casa con el "
+            f"patrón y no cuenta como contenido: {_lista(sueltas, max_hits)}."
+        )
     return "\n".join([cabecera, *hits])
+
+
+def _lista(items: list[str], tope: int) -> str:
+    """Una lista en una línea, y si pasa del tope dice cuántas quedaron afuera."""
+    if len(items) <= tope:
+        return ", ".join(items)
+    return ", ".join(items[:tope]) + f" y {len(items) - tope} más"
 
 
 @dataclass

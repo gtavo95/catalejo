@@ -249,7 +249,8 @@ class TestGrepPorDocumento:
         out = grep(self.CATALOGO, "DOSIS", doc="productos/")
 
         assert out.splitlines()[0] == (
-            "2 líneas casan con 'DOSIS' en los 2 documentos que casan con 'productos/'."
+            "2 líneas casan con 'DOSIS' en los 2 documentos que casan con 'productos/': "
+            "productos/viventem.md (1), productos/segador.md (1)."
         )
 
     def test_pliega_como_el_patron(self) -> None:
@@ -268,6 +269,93 @@ class TestGrepPorDocumento:
 
         assert out.startswith("100 líneas casan con 'linea' en a.md; estas son las primeras 3.")
         assert len(out.splitlines()) == 4
+
+
+class TestCabeceraPorDocumento:
+    """La primera línea habla en documentos, y la línea `=== ruta ===` no es una."""
+
+    CATALOGO = (
+        "=== productos/segador.md ===\n"
+        "pulgón: 1.0 L/Ha\n"
+        "pulgón verde también\n"
+        "=== productos/index.md ===\n"
+        "- [Bio BPBS](bio-bpbs.md)\n"
+        "=== ontologia/objetivos.md ===\n"
+        "| pulgon | Pulgón | insecto |\n"
+        "=== productos/bio-bpbs.md ===\n"
+        "Bio BPBS, para trips\n"
+    )
+
+    def test_dice_en_que_documentos_y_cuantas_en_cada_uno(self) -> None:
+        """Sobre el catálogo, `pulgon` son 24 líneas en 3 documentos. Esa lista es
+        el esqueleto de la respuesta: qué fichas, y aparte qué dice el vocabulario.
+        Antes el modelo la reconstruía leyendo 24 prefijos."""
+        out = grep(self.CATALOGO, "pulgon")
+
+        assert out.splitlines()[0] == (
+            "3 líneas casan con 'pulgon' en 2 documentos: productos/segador.md (2), "
+            "ontologia/objetivos.md (1)."
+        )
+
+    def test_un_solo_documento_se_nombra_sin_lista(self) -> None:
+        assert grep(self.CATALOGO, "verde").splitlines()[0] == (
+            "1 línea casa con 'verde' en productos/segador.md."
+        )
+
+    def test_la_cabecera_no_cuenta_ni_se_imprime(self) -> None:
+        """Contiene la ruta, así que un patrón que nombra la carpeta casaba con ella:
+        `productos` daba 120 líneas de las que 39 eran cabeceras."""
+        out = grep(self.CATALOGO, "segador")
+
+        assert out.splitlines()[0].startswith("0 líneas casan con 'segador'.")
+        assert "=== productos/segador.md ===" not in out
+
+    def test_listar_los_documentos_no_es_un_cero_falso(self) -> None:
+        """`grep(ctx, '===')` es la forma natural de listar los documentos de un
+        texto sin índice. Saltar la cabecera en silencio la vuelve un cero."""
+        out = grep(self.CATALOGO, "^=== ")
+
+        assert out == (
+            "0 líneas casan con '^=== '. La cabecera `=== ruta ===` de 4 documentos casa con "
+            "el patrón y no cuenta como contenido: productos/segador.md, productos/index.md, "
+            "ontologia/objetivos.md, productos/bio-bpbs.md."
+        )
+
+    def test_la_ficha_que_solo_casa_por_la_ruta_se_nombra_aparte(self) -> None:
+        """`bio-bpbs` con guion casa con la ruta y no con el texto de la ficha, que
+        dice "Bio BPBS". Sin esto el modelo ve una línea suelta del índice y
+        concluye que la ficha no existe."""
+        out = grep(self.CATALOGO, "bio-bpbs")
+
+        assert out.splitlines()[0] == (
+            "1 línea casa con 'bio-bpbs' en productos/index.md. La cabecera `=== ruta ===` "
+            "de 1 documento más casa con el patrón y no cuenta como contenido: "
+            "productos/bio-bpbs.md."
+        )
+
+    def test_un_documento_con_lineas_no_se_repite_como_ruta(self) -> None:
+        out = grep(self.CATALOGO, "segador|verde").splitlines()[0]
+
+        assert out == "1 línea casa con 'segador|verde' en productos/segador.md."
+
+    def test_la_lista_lleva_el_mismo_tope_que_las_lineas(self) -> None:
+        texto = "".join(f"=== d{i}.md ===\nx\n" for i in range(10))
+
+        out = grep(texto, "x", max_hits=3).splitlines()[0]
+
+        assert out.startswith("10 líneas casan con 'x' en 10 documentos: d0.md (1), d1.md (1), d2.md (1) y 7 más;")
+        assert out.endswith("Para el resto subí max_hits, afina el patrón o acota con doc=.")
+
+    def test_con_doc_dice_cuantos_de_los_mirados(self) -> None:
+        out = grep(self.CATALOGO, "pulgon", doc="productos/").splitlines()[0]
+
+        assert out == (
+            "2 líneas casan con 'pulgon' en 1 de los 3 documentos que casan con 'productos/': "
+            "productos/segador.md (2)."
+        )
+
+    def test_sin_documentos_no_cambia_nada(self) -> None:
+        assert grep("uno\ndos precio", "precio") == "1 línea casa con 'precio'.\n2: dos precio"
 
 
 class TestPlegadoGuardado:
