@@ -7,6 +7,7 @@
     uv run agro.py --plan "..."          además, la checklist del turno
     uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
     uv run agro.py --ontologia "..."     además, `objetivos` como dato en el REPL
+    uv run agro.py --contenedor "..."    el REPL en un proceso hijo que se mata si tarda
 
 El corpus son las 39 fichas de producto y la ontología de `successo-okf`: 360 KB,
 ~90k tokens. Cada ficha trae un bloque `# Agronomía` en JSON con los cultivos
@@ -70,8 +71,8 @@ from catalejo.rlm import (
     INSTRUCCIONES,
     Handle,
     Registro,
+    Repl,
     Verbos,
-    Workspace,
     citada,
     drive,
     planner,
@@ -480,7 +481,8 @@ def armar(
     plan: bool = False,
     citas: bool = True,
     ontologia: bool = False,
-) -> tuple[Cell, Workspace]:
+    contenedor: bool = False,
+) -> tuple[Cell, Repl]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
     El workspace se arma una sola vez a propósito. Las variables persisten entre
@@ -518,6 +520,10 @@ def armar(
     `grep('cogollo')` cae en la ficha directo. La hoja ya es dato para `grep` por
     estar en el corpus, y la cabecera por documento la distingue de una ficha.
     Pasa a default el día que un alias que la ficha no escribe lo pida.
+
+    `contenedor=True` corre el código del modelo en un proceso hijo que se mata
+    si tarda; `llm` y el índice siguen acá. Lo que el modelo ve no cambia. El que
+    llama cierra el workspace al terminar, porque un proceso no se va solo.
     """
     regs = indice()
     verbos = Verbos()
@@ -534,6 +540,7 @@ def armar(
         budget=60_000,
         extra=extra,
         nota="",
+        contenedor=contenedor,
     )
     h = Handle(
         var=ws.var,
@@ -635,7 +642,7 @@ def final(out: Log) -> str:
     return "(se quedó sin pasos antes de contestar)"
 
 
-def cuenta(out: Log, ws: Workspace) -> str:
+def cuenta(out: Log, ws: Repl) -> str:
     b = ws.bridge
     delegado = f", {b.calls} lecturas delegadas" if b is not None and b.calls else ""
     fallas = f", fails: {[f.reason for f in out.fails]}" if out.fails else ""
@@ -644,7 +651,7 @@ def cuenta(out: Log, ws: Workspace) -> str:
 
 async def responder(
     agente: Cell,
-    ws: Workspace,
+    ws: Repl,
     pregunta: str,
     historia: tuple[tuple[str, str], ...],
     *,
@@ -697,12 +704,21 @@ async def main(argv: list[str]) -> None:
     plan = "--plan" in argv
     citas = "--sin-citas" not in argv
     ontologia = "--ontologia" in argv
+    contenedor = "--contenedor" in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
 
     texto = corpus()
     fichas = texto.count("=== productos/")
     modelo = proveedor(argv)
-    agente, ws = armar(texto, modelo, ver=ver, plan=plan, citas=citas, ontologia=ontologia)
+    agente, ws = armar(
+        texto,
+        modelo,
+        ver=ver,
+        plan=plan,
+        citas=citas,
+        ontologia=ontologia,
+        contenedor=contenedor,
+    )
     historia: tuple[tuple[str, str], ...] = ()
 
     print(
@@ -710,6 +726,7 @@ async def main(argv: list[str]) -> None:
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
         f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
         f"{' · con ontología' if ontologia else ''}"
+        f"{' · en un proceso hijo' if contenedor else ''}"
     )
 
     try:
@@ -731,6 +748,7 @@ async def main(argv: list[str]) -> None:
             )
             historia = (*historia, (pregunta, respuesta))[-3:]
     finally:
+        ws.cerrar()
         await modelo.aclose()
 
 

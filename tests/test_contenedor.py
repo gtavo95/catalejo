@@ -1,7 +1,7 @@
 import pytest
 
 from catalejo.core import PlanOp
-from catalejo.rlm import HERRAMIENTAS, Contenedor, Verbos, Workspace
+from catalejo.rlm import HERRAMIENTAS, Bridge, Contenedor, Verbos, Workspace
 
 
 class TestContenedor:
@@ -45,10 +45,11 @@ class TestContenedor:
         finally:
             c.cerrar()
 
-    async def test_las_movidas_del_plan_vuelven_al_verbos_del_padre(self) -> None:
-        """`add_step` apila en el hijo y el planner lo lee acá, sin enterarse."""
+    async def test_las_movidas_del_plan_apilan_en_el_verbos_del_padre(self) -> None:
+        """`add_step` es un bound method, así que no cruza: el hijo lo llama por el
+        pipe y apila acá, y el planner lo lee por `tomar()` sin enterarse."""
         v = Verbos()
-        c = Contenedor("x", verbos=v)
+        c = Contenedor("x", extra=v.builtins)
         try:
             await c.run("add_step('leer', 'mirar la ficha'); mark('leer', 'active')")
 
@@ -78,13 +79,67 @@ class TestContenedor:
         finally:
             c.cerrar()
 
-    async def test_el_extra_no_cruza_si_es_funcion(self) -> None:
-        """Un bound method de un objeto picklable cruzaría como copia y las llamadas
-        se perderían en silencio. Peor que un error, así que es un error."""
-        v = Verbos()
+    async def test_una_funcion_del_extra_corre_en_el_padre(self) -> None:
+        """La closure con estado se queda acá; el hijo tiene un stub con su nombre."""
+        vistas: list[str] = []
 
-        with pytest.raises(TypeError, match="add_step.*verbos="):
-            Contenedor("x", extra=v.builtins)
+        def anota(s: str) -> str:
+            vistas.append(s)
+            return s.upper()
+
+        c = Contenedor("x", extra={"anota": anota})
+        try:
+            out = await c.run("print(anota('hola'), anota(s='chau'))")
+
+            assert out.stdout == "HOLA CHAU\n"
+            assert vistas == ["hola", "chau"]
+        finally:
+            c.cerrar()
+
+    async def test_un_error_del_padre_vuelve_con_su_nombre(self) -> None:
+        """El modelo lee `ValueError: ...`, igual que si corriera en proceso."""
+
+        def rompe(s: str) -> str:
+            raise ValueError(f"no sé qué hacer con {s!r}")
+
+        c = Contenedor("x", extra={"rompe": rompe})
+        try:
+            out = await c.run("rompe('esto')")
+
+            assert out.err == "ValueError: no sé qué hacer con 'esto'"
+        finally:
+            c.cerrar()
+
+    async def test_lo_que_no_se_puede_picklear_de_vuelta_es_un_error_del_builtin(self) -> None:
+        c = Contenedor("x", extra={"raro": lambda: (yield)})
+        try:
+            out = await c.run("raro()")
+
+            assert out.err.startswith("TypeError: cannot pickle")
+        finally:
+            c.cerrar()
+
+    async def test_el_bridge_mide_lo_que_gasta_un_remoto(self) -> None:
+        """Igual que `Workspace.run`: se le da el loop y se mide la diferencia."""
+        b = Bridge(budget=100)
+
+        def cobra() -> str:
+            b.spent += 7
+            return "pagado"
+
+        c = Contenedor("x", extra={"cobra": cobra}, bridge=b)
+        try:
+            out = await c.run("print(cobra())")
+
+            assert out.stdout == "pagado\n"
+            assert out.spent == 7
+            assert (await c.run("pass")).spent == 0
+        finally:
+            c.cerrar()
+
+    async def test_un_dato_que_no_se_picklea_es_un_error_al_armar(self) -> None:
+        with pytest.raises(TypeError, match="`raro` no se puede picklear"):
+            Contenedor("x", extra={"raro": (x for x in "ab")})
 
     async def test_var_y_tools_como_el_workspace(self) -> None:
         c = Contenedor("x", var="wiki", note="hay un índice")

@@ -32,8 +32,21 @@ Un `rlm()` en vuelo bloquea el hilo del `exec` que lo llamó hasta que vuelve, a
 que los hilos ocupados son como mucho `paralelo` elevado a `depth`. Con los
 valores de fábrica son ocho y el pool de `asyncio.to_thread` aguanta. Subir los
 dos a la vez no: `paralelo=20` con `depth=2` pide cuatrocientos hilos y el pool se
-traba esperándose a sí mismo. Es otra cosa que arregla el contenedor, donde cada
-sandbox es un proceso y no un hilo.
+traba esperándose a sí mismo.
+
+# En proceso o en un proceso hijo
+
+`contenedor=True` arma cada REPL del árbol en un `Contenedor` en vez de un
+`Workspace`: el de la raíz y el de cada sub-agente que abra `rlm`. El código del
+modelo corre en un hijo que se puede matar; `llm` y `rlm` siguen siendo estas
+mismas closures, que corren en el padre, y el hijo las llama por el pipe. Todos
+los modelos, todo el gasto y todo el `Bridge` quedan de este lado, que es la
+regla que no se negocia: el hijo no tiene red ni credenciales.
+
+Lo que el contenedor NO arregla todavía es el conteo de hilos: el padre sigue
+teniendo un hilo bloqueado por cada `run` en vuelo, ahora esperando el pipe en
+vez del `exec`. Atender el pipe desde el event loop, sin hilo, es el paso que
+falta para que la cuenta de arriba deje de importar.
 """
 
 from __future__ import annotations
@@ -45,7 +58,7 @@ from catalejo.core import Conversation, Log, Message, Role, loop, then
 from catalejo.llm import Model, Reply
 
 from .celulas import Handle, executor, extract_code, worker
-from .repl import Bridge, Workspace
+from .repl import Bridge, Contenedor, Repl, Workspace
 
 DEPTH = 1
 MAX_STEPS = 6
@@ -163,7 +176,8 @@ def recurse(
     paralelo: int = PARALELO,
     extra: Mapping[str, object] | None = None,
     nota: str = "",
-) -> Workspace:
+    contenedor: bool = False,
+) -> Repl:
     """Un `Workspace` que además sabe delegar en otro modelo.
 
     `payload` es el contexto grande. Entra al namespace del REPL con el nombre
@@ -209,6 +223,11 @@ def recurse(
     La `nota` no es opcional cuando hay `extra`. El namespace no se puede
     inspeccionar desde el preámbulo, así que un builtin que no se nombra es un
     builtin que el modelo no va a usar.
+
+    `contenedor` decide dónde corre el código del modelo, acá o en un proceso
+    hijo, y baja a los sub-agentes: si la raíz está aislada, los hijos también.
+    Lo que el modelo ve es lo mismo en los dos casos. El que lo arma tiene que
+    llamar `cerrar()` al terminar, porque un proceso no se va solo.
     """
     bridge = Bridge(budget=budget)
     return _armar(
@@ -221,6 +240,7 @@ def recurse(
         paralelo=paralelo,
         extra=extra,
         nota=nota,
+        contenedor=contenedor,
     )
 
 
@@ -235,9 +255,13 @@ def _armar(
     paralelo: int,
     extra: Mapping[str, object] | None = None,
     nota: str = "",
-) -> Workspace:
-    builtins = _builtins(model, bridge, depth=depth, max_steps=max_steps, paralelo=paralelo)
-    return Workspace(
+    contenedor: bool = False,
+) -> Repl:
+    builtins = _builtins(
+        model, bridge, depth=depth, max_steps=max_steps, paralelo=paralelo, contenedor=contenedor
+    )
+    forma = Contenedor if contenedor else Workspace
+    return forma(
         payload,
         var=var,
         extra={**builtins, **(extra or {})},
@@ -253,6 +277,7 @@ def _builtins(
     depth: int,
     max_steps: int,
     paralelo: int,
+    contenedor: bool,
 ) -> dict[str, object]:
     sem = asyncio.Semaphore(paralelo)
 
@@ -269,14 +294,27 @@ def _builtins(
                 return f"[la llamada falló: {type(e).__name__}: {e}]"
 
     async def sub(pregunta: str, texto: str) -> str:
-        hijo = _armar(
-            texto, model, bridge, var="ctx", depth=depth - 1, max_steps=max_steps, paralelo=paralelo
+        # En un hilo porque armar un Contenedor lanza un proceso y le manda el
+        # texto, y eso bloquea; en proceso no cuesta nada y no molesta.
+        hijo = await asyncio.to_thread(
+            _armar,
+            texto,
+            model,
+            bridge,
+            var="ctx",
+            depth=depth - 1,
+            max_steps=max_steps,
+            paralelo=paralelo,
+            contenedor=contenedor,
         )
         handle = Handle(var=hijo.var, size=f"{len(texto):,} caracteres", tools=hijo.tools)
         agente = loop(
             then(worker(model, handle, keep_recent=6), executor(hijo)), max_steps=max_steps
         )
-        return answer(await agente(Log(said=(Message(Role.USER, pregunta),))))
+        try:
+            return answer(await agente(Log(said=(Message(Role.USER, pregunta),))))
+        finally:
+            hijo.cerrar()
 
     def sincrono(hondo: bool) -> Callable[[str, str | Sequence[str]], str | list[str]]:
         def llamar(pregunta: str, texto: str | Sequence[str]) -> str | list[str]:

@@ -3,23 +3,38 @@
 Ordenados por criticidad, no por costo. Cada uno dice qué es, por qué, y qué lo bloquea.
 Lo que se mide va a `bitacora.tsv`; acá solo vive lo que todavía no se hizo.
 
-## 1. El `Contenedor`, fase 2: `llm` y `rlm` cruzan el pipe
+## 1. El `Contenedor`: hecho, queda como flag, y lo que le falta
 
-La fase 1 está hecha: `catalejo/rlm/repl/contenedor.py` corre el `Workspace` en un proceso hijo con
-`spawn`, mata y relanza si tarda (medido: `(a+)+$` muere a los 2 s justos y el `run` siguiente
-anda), y las movidas del plan vuelven por el pipe al `Verbos` del padre. Lo que falta para que
-`agro.py` corra adentro: `llm` y `rlm` son closures sobre `bridge.loop` y no cruzan. La forma es la
-misma del `Bridge`, con un pipe donde hoy hay un `run_coroutine_threadsafe`: el hijo manda un pedido
-y bloquea, el padre lo resuelve en su loop y contesta. `agro.py` usa `recurse` con `depth=0`, que
-igual instala `llm`, así que sigue en proceso hasta esto.
+Las dos fases están. El código del modelo corre en un proceso hijo con `spawn` que se mata y
+relanza si tarda, y `llm`, `rlm` y `add_step` se quedan en el padre: el hijo recibe un stub con
+el mismo nombre que manda el pedido por el pipe, bloquea, y devuelve lo que el padre contestó.
+Es el mismo `Bridge` con un pipe donde había un `run_coroutine_threadsafe`, y por eso el reparto
+del `extra` es por `callable` y no por lo que pickle acepte. Con `recurse(..., contenedor=True)`
+cada REPL del árbol es un hijo, el de la raíz y el de cada sub-agente. Se corre con
+`--contenedor` en `agro.py` y en `evals.py` (los dos montajes).
 
-Antes de la fase 2, la primera prueba de campo es `evals.py` en modo no recursivo, que hoy arma un
-`Workspace` pelado y puede armar un `Contenedor` con un flag. Sin fila en la bitácora: lo que el
-modelo ve no cambia salvo en un timeout, y hay cero timeouts medidos.
+Medido: lo que el modelo ve es byte a byte lo mismo (las 12 llamadas de una corrida con un
+proveedor de guion, en los dos arms, sobre el corpus real), `cogollero-por-categoria` con
+`--agro --contenedor` cierra ok en 7 turnos con el índice cruzado como dato, y tres `llm` desde
+el hijo contra luna vuelven con su gasto contado en el `Bridge`. Cero timeouts, cero procesos
+colgando. Sin fila en la bitácora: la única diferencia visible sería un `[repl]` que diga "no
+terminó en 30 s", y no apareció.
 
-Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es el lado no confiable
-y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la inyección;
-para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 3.
+Lo que falta, en orden. El padre sigue teniendo un hilo bloqueado por cada `run` en vuelo,
+ahora esperando el pipe en vez del `exec`; atender el pipe desde el event loop (`add_reader`)
+es lo que haría que `paralelo` y `depth` se puedan subir juntos. El hijo tiene disco y sockets:
+`resource` o un sandbox de verdad son otro escalón. Y si pasa a default es una decisión de A/B
+(spent y turnos a n=3), no de diseño; hoy no hay motivo medido para pagar el `spawn` por caso.
+
+Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es el lado no
+confiable y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la
+inyección; para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 3.
+
+Aparte, y sin dueño todavía: luna en la wiki (sin `--agro`) se niega a escribir código. En 4 de 6
+corridas de `karbo-precio` y 4 de 6 de `glifosato`, con y sin `--contenedor`, contesta "no tengo
+disponible el bloque de ejecución" y `[grounding]` la empuja una vez sin efecto. La wiki con luna
+nunca se había corrido (el control del 09-10 era anterior al commit de luna), así que no es una
+regresión: es el preámbulo pelado de la wiki contra ese proveedor.
 
 ## 2. El grep que afloja el patrón cuando devuelve cero (rebajado, y el 3 lo confirmó)
 

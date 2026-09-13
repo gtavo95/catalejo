@@ -448,6 +448,13 @@ class Workspace:
             out = await asyncio.to_thread(self.correr, code)
             return replace(out, spent=self.bridge.spent - antes)
 
+    def cerrar(self) -> None:
+        """No hay nada que cerrar: el namespace vive en este proceso y se va con él.
+
+        Existe para que el que arma un REPL lo cierre sin preguntar cuál le tocó.
+        `Contenedor.cerrar` sí hace algo, y es el mismo nombre a propósito.
+        """
+
     def correr(self, code: str) -> Output:
         """El `exec` pelado, síncrono, sin hilo ni lock: solo correr y capturar.
 

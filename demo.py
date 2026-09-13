@@ -37,7 +37,7 @@ from pathlib import Path
 
 from catalejo.core import Log, Message, Role, loop, then
 from catalejo.llm import Gemini
-from catalejo.rlm import Handle, Workspace, executor, grounded, recurse, worker
+from catalejo.rlm import Handle, Repl, Workspace, executor, grounded, recurse, worker
 
 CODIGOS = ["E-102", "E-417", "E-500", "W-31"]
 PRODUCTOS = ["tostadora", "licuadora", "cafetera", "batidora"]
@@ -112,7 +112,7 @@ def transcribir(out: Log) -> None:
         print(f"\n\033[1m[{quien}]\033[0m {m.text.strip()[:1500]}")
 
 
-def cuenta(out: Log, texto: str, ws: Workspace) -> None:
+def cuenta(out: Log, texto: str, ws: Repl) -> None:
     print("\n\033[1m[cuenta]\033[0m")
     print(f"  corpus                {len(texto):,} caracteres (~{len(texto) // 4:,} tokens)")
     print(f"  tokens gastados       {out.spent:,}")
@@ -127,7 +127,7 @@ def cuenta(out: Log, texto: str, ws: Workspace) -> None:
         print(f"  fails                 {out.fails}")
 
 
-def handle(ws: Workspace, texto: str) -> Handle:
+def handle(ws: Repl, texto: str) -> Handle:
     return Handle(
         var=ws.var,
         schema="una linea por ticket de soporte, con fecha, producto, codigo de error y la queja",

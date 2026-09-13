@@ -4,6 +4,8 @@
     uv run evals.py <caso> <caso>   corre un subconjunto por id
     uv run evals.py <caso>          corre una y muestra la transcripción
     uv run evals.py --recurse       las 20, con `llm` disponible
+    uv run evals.py --contenedor    las 20, con el REPL en un proceso hijo que se mata si tarda
+    uv run evals.py --agro --contenedor  las agronómicas, con el REPL en un proceso hijo
     uv run evals.py --repeats=3     cada caso tres veces, para ver cuál flipa
     uv run evals.py --agro          las preguntas agronómicas, contra el agente de agro.py
     uv run evals.py --agro --plan   las mismas, con la checklist prendida
@@ -87,7 +89,7 @@ from pathlib import Path
 import agro
 from catalejo.core import Cell, Log, Message, Role
 from catalejo.llm import Provider
-from catalejo.rlm import Handle, Workspace, drive, inventada, recurse, rutas
+from catalejo.rlm import Contenedor, Handle, Repl, Workspace, drive, inventada, recurse, rutas
 
 AVISO = re.compile(r"\[(\w+)\]")
 
@@ -146,13 +148,22 @@ ESQUEMA = (
 )
 
 
-def wiki(texto: str, modelo: Provider, *, recursivo: bool) -> tuple[Cell, Workspace]:
-    """El agente de la wiki: el REPL sobre el bundle entero y el contrato de cita."""
-    ws = (
-        recurse(texto, modelo, var="wiki", depth=0, budget=60_000)
-        if recursivo
-        else Workspace(texto, var="wiki")
-    )
+def wiki(
+    texto: str, modelo: Provider, *, recursivo: bool, contenedor: bool = False
+) -> tuple[Cell, Repl]:
+    """El agente de la wiki: el REPL sobre el bundle entero y el contrato de cita.
+
+    `contenedor` corre el código del modelo en un proceso hijo. Lo que el modelo
+    ve no cambia, porque `var` y `tools` son los mismos; lo único que puede
+    aparecer distinto es un `[repl]` diciendo que el snippet se mató por tardar.
+    """
+    ws: Repl
+    if recursivo:
+        ws = recurse(texto, modelo, var="wiki", depth=0, budget=60_000, contenedor=contenedor)
+    elif contenedor:
+        ws = Contenedor(texto, var="wiki")
+    else:
+        ws = Workspace(texto, var="wiki")
     h = Handle(
         var="wiki",
         schema=ESQUEMA,
@@ -173,7 +184,7 @@ class Montaje:
 
     tsv: str
     corpus: Callable[[], str]
-    montar: Callable[[str, Provider], tuple[Cell, Workspace]]
+    montar: Callable[[str, Provider], tuple[Cell, Repl]]
     pedir: Callable[[str], str]
 
 
@@ -185,7 +196,11 @@ def montaje(argv: list[str]) -> Montaje:
     agronómico. El montaje de la wiki lo ignora, y eso es correcto: el plan no es
     una mejora del motor que se prenda en todas partes, es un cableado de un
     agente.
+
+    `--contenedor` es lo contrario: el mismo arm con otro motor abajo, y entra
+    en los dos montajes.
     """
+    contenedor = "--contenedor" in argv
     if "--agro" in argv:
         plan = "--plan" in argv
         citas = "--sin-citas" not in argv
@@ -194,7 +209,13 @@ def montaje(argv: list[str]) -> Montaje:
             tsv="agro.tsv",
             corpus=agro.corpus,
             montar=lambda texto, modelo: agro.armar(
-                texto, modelo, ver=False, plan=plan, citas=citas, ontologia=ontologia
+                texto,
+                modelo,
+                ver=False,
+                plan=plan,
+                citas=citas,
+                ontologia=ontologia,
+                contenedor=contenedor,
             ),
             pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan, ontologia=ontologia),
         )
@@ -202,7 +223,9 @@ def montaje(argv: list[str]) -> Montaje:
     return Montaje(
         tsv="preguntas.tsv",
         corpus=corpus,
-        montar=lambda texto, modelo: wiki(texto, modelo, recursivo=recursivo),
+        montar=lambda texto, modelo: wiki(
+            texto, modelo, recursivo=recursivo, contenedor=contenedor
+        ),
         pedir=lambda pregunta: pregunta + CITA,
     )
 
@@ -217,21 +240,29 @@ def repeticiones(argv: list[str]) -> int:
     return 1
 
 
-async def correr(
-    caso: Caso, texto: str, modelo: Provider, m: Montaje
-) -> tuple[Log, Workspace, float]:
-    """Una corrida de un caso, con su workspace recién armado.
+async def correr(caso: Caso, texto: str, modelo: Provider, m: Montaje) -> tuple[Log, int, float]:
+    """Una corrida de un caso, con su workspace recién armado y cerrado al final.
 
     El workspace se arma acá adentro y no afuera a propósito. Las variables
     persisten entre corridas, que es lo que se quiere en una sesión y lo que
     arruina una medición: el índice que el modelo construya en el caso 1 le
     quedaría servido al caso 2 y el segundo saldría barato por el trabajo del
     primero.
+
+    Y se cierra acá porque nadie más lo tiene: `Corrida` no guarda el workspace,
+    y un proceso hijo no muere cuando se lo deja de referenciar. `daemon=True`
+    solo cubre la salida del padre; sin el `cerrar`, `--repeats=3` deja sesenta
+    intérpretes vivos, cada uno con el corpus adentro, hasta que termine la
+    corrida entera. Del workspace sobrevive un número, las lecturas delegadas.
     """
     agente, ws = m.montar(texto, modelo)
     t0 = time.monotonic()
-    out = await agente(Log(said=(Message(Role.USER, m.pedir(caso.pregunta)),)))
-    return out, ws, time.monotonic() - t0
+    try:
+        out = await agente(Log(said=(Message(Role.USER, m.pedir(caso.pregunta)),)))
+    finally:
+        ws.cerrar()
+    delegadas = ws.bridge.calls if ws.bridge is not None else 0
+    return out, delegadas, time.monotonic() - t0
 
 
 def final(out: Log) -> str:
@@ -451,7 +482,7 @@ async def main(argv: list[str]) -> None:
 
     async def uno(caso: Caso, vuelta: int) -> Corrida:
         async with sem:
-            out, ws, seg = await correr(caso, texto, modelo, m)
+            out, delegadas, seg = await correr(caso, texto, modelo, m)
         respuesta = final(out)
         c = Corrida(
             caso=caso,
@@ -461,7 +492,7 @@ async def main(argv: list[str]) -> None:
             seg=seg,
             ok=acierta(caso, respuesta),
             fantasmas=inventada(respuesta, reales),
-            delegadas=ws.bridge.calls if ws.bridge is not None else 0,
+            delegadas=delegadas,
         )
         marca = "···" if c.perdida else ("ok " if c.ok else "MAL")
         cual = f" #{vuelta + 1}" if n > 1 else ""

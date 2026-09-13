@@ -11,12 +11,17 @@ from __future__ import annotations
 import pytest
 
 from catalejo.core import Fail, Log, Message, Role
+from catalejo.core import Conversation
+from catalejo.llm import Reply
+from catalejo.rlm import Contenedor, Workspace
 from evals import (
     Caso,
     Corrida,
     acierta,
+    montaje,
     repeticiones,
     resumir,
+    wiki,
 )
 
 UNO = Caso("uno", "¿?", ("productos/x.md",), "# Resumen", "no inventar")
@@ -189,3 +194,46 @@ class TestRepeticiones:
     def test_cero_no_es_una_corrida(self) -> None:
         with pytest.raises(SystemExit):
             repeticiones(["--repeats=0"])
+
+
+class Mudo:
+    """Un `Provider` que nunca se llama: armar el montaje no habla con nadie."""
+
+    model = "mudo"
+
+    async def complete(self, conv: Conversation) -> Reply:
+        raise AssertionError("armar el agente no debería llamar al modelo")
+
+    async def aclose(self) -> None:
+        pass
+
+
+class TestMontaje:
+    def test_contenedor_es_el_montaje_de_la_wiki(self) -> None:
+        assert montaje(["--contenedor"]).tsv == "preguntas.tsv"
+
+    async def test_contenedor_con_recurse_tambien_da_un_proceso_hijo(self) -> None:
+        """`llm` se queda en el padre y el hijo lo llama por el pipe."""
+        _, ws = wiki("x", Mudo(), recursivo=True, contenedor=True)
+        try:
+            assert isinstance(ws, Contenedor)
+            assert "llm(" in ws.tools
+            assert ws.bridge is not None
+        finally:
+            ws.cerrar()
+
+    async def test_la_wiki_con_contenedor_arma_un_proceso_hijo_con_el_mismo_handle(self) -> None:
+        """Lo que el modelo ve no cambia: mismo `var`, mismas herramientas en el preámbulo."""
+        _, ws = wiki("=== a.md ===\nhola", Mudo(), recursivo=False, contenedor=True)
+        assert isinstance(ws, Contenedor)
+        try:
+            assert ws.var == "wiki"
+            assert ws.tools == Workspace("x", var="wiki").tools
+            assert (await ws.run("print(grep(wiki, 'hola'))")).stdout.startswith("1 línea")
+        finally:
+            ws.cerrar()
+
+    def test_sin_la_bandera_la_wiki_sigue_en_proceso(self) -> None:
+        _, ws = wiki("x", Mudo(), recursivo=False)
+
+        assert isinstance(ws, Workspace)

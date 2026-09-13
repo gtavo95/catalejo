@@ -93,6 +93,68 @@ class TestNote:
         assert "llm(pregunta" in note(0)
 
 
+class TestEnUnProcesoHijo:
+    """Lo mismo que abajo, con `contenedor=True`: el código corre en un hijo y
+    `llm`/`rlm` vuelven por el pipe a estas mismas closures."""
+
+    async def test_llm_desde_el_hijo_lee_en_el_padre(self) -> None:
+        model = Router(("de qué habla", "de tostadoras"))
+        ws = recurse("el manual de la tostadora", model, contenedor=True)
+        try:
+            out = await ws.run("print(llm('de qué habla esto', ctx))")
+
+            assert out.stdout == "de tostadoras\n"
+            assert out.err == ""
+            assert out.spent == COSTO
+            assert "el manual" in model.visto[0][-1].text
+        finally:
+            ws.cerrar()
+
+    async def test_el_sub_agente_tambien_corre_en_un_hijo(self) -> None:
+        model = Router(
+            ("nivel dos", bloque("print(llm('leé esto', ctx))")),
+            ("leé esto", "es un pedazo"),
+            ("[repl]", "el nieto dijo que es un pedazo"),
+        )
+        ws = recurse("payload", model, depth=1, contenedor=True)
+        try:
+            out = await ws.run("print(rlm('nivel dos', 'la rebanada'))")
+
+            assert out.stdout == "el nieto dijo que es un pedazo\n"
+            assert out.spent == 3 * COSTO
+        finally:
+            ws.cerrar()
+
+    async def test_la_lista_corre_en_paralelo_desde_el_hijo(self) -> None:
+        class Lento:
+            def __init__(self) -> None:
+                self.vuelo = self.pico = 0
+
+            async def complete(self, conv: Conversation) -> Reply:
+                self.vuelo += 1
+                self.pico = max(self.pico, self.vuelo)
+                await asyncio.sleep(0.05)
+                self.vuelo -= 1
+                return Reply(Message(Role.ASSISTANT, "ok"), spent=COSTO)
+
+        lento = Lento()
+        ws = recurse("", lento, paralelo=4, contenedor=True)
+        try:
+            out = await ws.run("print(llm('x', ['a', 'b', 'c', 'd']))")
+
+            assert out.stdout == "['ok', 'ok', 'ok', 'ok']\n"
+            assert lento.pico == 4
+        finally:
+            ws.cerrar()
+
+    async def test_cerrar_cierra_tambien_el_workspace_en_proceso(self) -> None:
+        ws = recurse("", Router())
+
+        ws.cerrar()
+
+        assert (await ws.run("print(1)")).stdout == "1\n"
+
+
 class TestLlm:
     async def test_el_modelo_puede_leer_un_pedazo(self) -> None:
         model = Router(("de qué habla", "de tostadoras"))
