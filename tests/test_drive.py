@@ -7,9 +7,9 @@ la copia única, y de paso lo que pasa cuando se le agrega una célula al final.
 
 from catalejo.core import ZERO, Cell, Log, Message, PlanOp, Role, Status, proyectar
 from catalejo.llm import Stub
-from catalejo.repl import Handle, Registro, Verbos, Workspace, drive, planner
-from catalejo.repl.grounding import AVISO
-from catalejo.repl.planner import FALTAN, INCOMPLETO
+from catalejo.rlm import Handle, Registro, Verbos, Workspace, drive, planner
+from catalejo.rlm.celulas.grounding import AVISO
+from catalejo.rlm.celulas.planner import FALTAN, INCOMPLETO
 
 PAYLOAD = "manual\ngarantia: 24 meses\nfin"
 

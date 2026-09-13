@@ -7,7 +7,7 @@ import pytest
 
 from catalejo.core import ZERO, Fail, Log, Message, Role, loop, then
 from catalejo.llm import Gemini, GeminiError, from_response, to_request
-from catalejo.repl import Handle, Workspace, executor, worker
+from catalejo.rlm import Handle, Workspace, executor, worker
 
 OK: dict[str, Any] = {
     "candidates": [{"content": {"parts": [{"text": "listo"}], "role": "model"}}],

@@ -65,7 +65,7 @@ from typing import Any
 
 from catalejo.core import ZERO, Cell, Log, Message, PlanOp, Role, Status, pendientes, proyectar
 from catalejo.llm import Gemini, OpenAI, Provider
-from catalejo.repl import (
+from catalejo.rlm import (
     INSTRUCCIONES,
     Handle,
     Registro,

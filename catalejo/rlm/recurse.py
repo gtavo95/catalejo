@@ -44,10 +44,8 @@ from collections.abc import Callable, Mapping, Sequence
 from catalejo.core import Conversation, Log, Message, Role, loop, then
 from catalejo.llm import Model, Reply
 
-from .executor import executor, extract_code
-from .handle import Handle
-from .worker import worker
-from .workspace import Bridge, Workspace
+from .celulas import Handle, executor, extract_code, worker
+from .repl import Bridge, Workspace
 
 DEPTH = 1
 MAX_STEPS = 6

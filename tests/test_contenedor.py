@@ -1,7 +1,7 @@
 import pytest
 
 from catalejo.core import PlanOp
-from catalejo.repl import HERRAMIENTAS, Contenedor, Verbos, Workspace
+from catalejo.rlm import HERRAMIENTAS, Contenedor, Verbos, Workspace
 
 
 class TestContenedor:

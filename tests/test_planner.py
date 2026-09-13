@@ -2,8 +2,8 @@
 
 from catalejo.core import ZERO, Log, Message, PlanOp, Role, Status, merge, proyectar, then
 from catalejo.llm import Stub
-from catalejo.repl import Handle, Registro, Verbos, Workspace, executor, planner, worker
-from catalejo.repl.planner import ESTADO, FALTAN, INCOMPLETO
+from catalejo.rlm import Handle, Registro, Verbos, Workspace, executor, planner, worker
+from catalejo.rlm.celulas.planner import ESTADO, FALTAN, INCOMPLETO
 
 PAYLOAD = "manual\ngarantia: 24 meses\nfin"
 

@@ -1,7 +1,7 @@
 from catalejo.core import ZERO, Cell, Fail, Log, Message, Role, Status, loop, merge, then
 from catalejo.llm import Stub
-from catalejo.repl import Handle, Workspace, citada, citadas, executor, inventada, rutas, worker
-from catalejo.repl.citas import PREFIJO
+from catalejo.rlm import Handle, Workspace, citada, citadas, executor, inventada, rutas, worker
+from catalejo.rlm.celulas.citas import PREFIJO
 
 CORPUS = "=== productos/si.md ===\ndosis: 1 L/ha\n\n=== ontologia/b.md ===\npulgón"
 REALES = rutas(CORPUS)

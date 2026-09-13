@@ -1,7 +1,7 @@
 from catalejo.core import ZERO, Cell, Log, Message, Role, Status, loop, merge, then
 from catalejo.llm import Stub
-from catalejo.repl import Handle, Workspace, executor, grounded, worker
-from catalejo.repl.grounding import AVISO, SIN_FUNDAMENTO
+from catalejo.rlm import Handle, Workspace, executor, grounded, worker
+from catalejo.rlm.celulas.grounding import AVISO, SIN_FUNDAMENTO
 
 PAYLOAD = "manual\ngarantia: 24 meses\nfin"
 

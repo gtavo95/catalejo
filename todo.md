@@ -5,7 +5,7 @@ Lo que se mide va a `bitacora.tsv`; acá solo vive lo que todavía no se hizo.
 
 ## 1. El `Contenedor`, fase 2: `llm` y `rlm` cruzan el pipe
 
-La fase 1 está hecha: `catalejo/repl/contenedor.py` corre el `Workspace` en un proceso hijo con
+La fase 1 está hecha: `catalejo/rlm/repl/contenedor.py` corre el `Workspace` en un proceso hijo con
 `spawn`, mata y relanza si tarda (medido: `(a+)+$` muere a los 2 s justos y el `run` siguiente
 anda), y las movidas del plan vuelven por el pipe al `Verbos` del padre. Lo que falta para que
 `agro.py` corra adentro: `llm` y `rlm` son closures sobre `bridge.loop` y no cruzan. La forma es la

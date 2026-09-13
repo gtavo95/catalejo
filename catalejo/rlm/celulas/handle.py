@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .workspace import HERRAMIENTAS
+from ..repl import HERRAMIENTAS
 
 
 @dataclass(frozen=True, slots=True)

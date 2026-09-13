@@ -102,6 +102,16 @@ HERRAMIENTAS = (
 )
 
 
+def rutas(texto: str) -> frozenset[str]:
+    """Las rutas que EXISTEN en el texto: las cabeceras `=== ruta ===`.
+
+    Vive al lado de `CABECERA` y no en `citas.py` porque es conocimiento del formato
+    del corpus, el mismo que usa `grep` para prefijar cada hit con su documento. La
+    cita se verifica contra esto, pero esto no sabe qué es una cita.
+    """
+    return frozenset(m.group(1) for m in map(CABECERA.match, texto.splitlines()) if m)
+
+
 def _sin_import(nombre: str, *_: object, **__: object) -> object:
     """El `import` que no hay, explicado.
 

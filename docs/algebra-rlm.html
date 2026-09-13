@@ -570,6 +570,7 @@ table.celdas tr.acum th { color: var(--ink-soft); font-weight: 400; }
 .est { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
 .est.hecho { color: var(--ok); }
 .est.falta { color: var(--ink-faint); }
+.est.medias { color: var(--ink-soft); }
 .estado-lista .item { font-size: 15.5px; }
 .estado-lista .item code { font-size: 12.5px; }
 .estado-lista .por { display: block; font-size: 14px; font-weight: 300; color: var(--ink-soft); }
@@ -2656,76 +2657,108 @@ seen = merge(seen, await agente(seen))</code></pre>
 <section class="leccion" id="lB">
   <div class="rail"><div class="rail-inner">
     <div class="num">B</div>
-    <p class="tesis">El agente cierra de punta a punta. Lo que falta es aislamiento y un juez.</p>
+    <p class="tesis">El agente cierra de punta a punta, en dos mitades que se importan en un solo sentido.</p>
   </div></div>
   <div class="cuerpo">
     <h2>Dónde está parado esto</h2>
 
+    <p>
+      El paquete se llamaba <code>repl</code> y contenía el agente entero, así que un commit sobre
+      una célula decía "repl:" y mentía. Ahora el agente es <code>catalejo/rlm</code> y adentro hay
+      dos carpetas que el grafo de imports ya separaba solo: una que corre código y no sabe qué es
+      una <code>Cell</code>, y otra que fabrica células y no sabe dónde corre el código.
+    </p>
+
     <ul class="estado-lista">
-      <li><span class="est hecho">Existe</span><span class="item"><code>rlm/core</code><span class="por">Log de cinco canales, merge, las leyes, la célula y los cuatro combinadores, con property tests</span></span></li>
-      <li><span class="est hecho">Existe</span><span class="item"><code>rlm/repl</code><span class="por">Workspace, executor, handle, worker, grounding, recurse y el Bridge de hilos</span></span></li>
-      <li><span class="est hecho">Existe</span><span class="item"><code>rlm/llm</code><span class="por">El seam Model y el adaptador de Gemini en HTTP crudo, con reintentos</span></span></li>
-      <li><span class="est hecho">Existe</span><span class="item">La recursión<span class="por"><code>llm</code> y <code>rlm</code> como builtins, en paralelo, con presupuesto propio y el gasto subiendo al padre</span></span></li>
-      <li><span class="est falta">Falta</span><span class="item">El contenedor<span class="por">La frontera de aislamiento real, con timeout, y un proceso por sandbox en vez de un hilo</span></span></li>
-      <li><span class="est falta">Falta</span><span class="item">Un juez<span class="por"><code>grounded</code> mira si consultó algo, no si lo que afirma sale de ahí. Eso es otra célula</span></span></li>
+      <li><span class="est hecho">Existe</span><span class="item"><code>catalejo/core</code><span class="por">Log de cinco canales, merge, las leyes, la célula y los combinadores, con property tests. Y el plan como tipo de dato con su intérprete: <code>Plan</code>, <code>PlanOp</code>, <code>admitir</code></span></span></li>
+      <li><span class="est hecho">Existe</span><span class="item"><code>catalejo/rlm/repl</code><span class="por">Dónde corre el código: el seam <code>Environment</code>, <code>Workspace</code> en proceso, <code>Contenedor</code> en proceso hijo, el <code>grep</code>, el <code>Bridge</code> y los verbos del plan como builtins. Lo único que toma de <code>core</code> es <code>PlanOp</code></span></span></li>
+      <li><span class="est hecho">Existe</span><span class="item"><code>catalejo/rlm/celulas</code><span class="por"><code>worker</code>, <code>handle</code>, <code>executor</code>, <code>grounded</code>, <code>citada</code> y <code>planner</code>. Cada módulo fabrica una célula y ninguno sabe si el código corre en proceso o en un hijo</span></span></li>
+      <li><span class="est hecho">Existe</span><span class="item"><code>catalejo/rlm</code><span class="por"><code>drive</code> compone las células en un turno y <code>recurse</code> arma un REPL que adentro tiene agentes. Son los únicos que necesitan las dos mitades, y son la R de RLM</span></span></li>
+      <li><span class="est hecho">Existe</span><span class="item"><code>catalejo/llm</code><span class="por">El seam <code>Model</code> y los adaptadores de Gemini y OpenAI en HTTP crudo, con reintentos</span></span></li>
+      <li><span class="est medias">A medias</span><span class="item">El contenedor<span class="por">La fase 1 corre el <code>Workspace</code> en un proceso hijo con <code>spawn</code>, lo mata si tarda y lo relanza. <code>llm</code> y <code>rlm</code> son closures sobre el event loop del padre y todavía no cruzan el pipe, así que <code>recurse</code> sigue en proceso</span></span></li>
+      <li><span class="est falta">Falta</span><span class="item">La ontología como dato<span class="por"><code>citada</code> ya verifica las rutas citadas contra el conjunto cerrado, sin juez. La plaga en prosa no es un chequeo de cadenas: lo que falta es darle al modelo el conjunto de objetivos como dato, para que el cero de <code>grep</code> sea una afirmación y no una ausencia</span></span></li>
       <li><span class="est falta">Falta</span><span class="item">Cancelación<span class="por"><code>contextvars</code> más <code>TaskGroup</code>, cuando <code>fanout</code> los necesite</span></span></li>
     </ul>
 
     <figure>
-      <svg viewBox="0 0 740 302" role="img" aria-label="Mapa de módulos: core no depende de nada, repl y llm se apoyan en él, y las tres piezas que faltan se enchufan en el contenedor, en la cadena de células y en fanout">
+      <svg viewBox="0 0 740 420" role="img" aria-label="Mapa de módulos: core no depende de nada; adentro de rlm, celulas importa de repl y nunca al revés, y drive y recurse juntan las dos; llm al costado; lo que falta se enchufa en rlm y en fanout">
         <defs>
           <marker id="fl12" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 1 L7 4 L0 7 z" fill="currentColor" opacity=".6"/>
           </marker>
         </defs>
 
-        <rect class="svg-box svg-dash" x="60" y="20" width="200" height="64" opacity=".45"/>
-        <text class="svg-s" x="70" y="38">falta</text>
-        <text class="svg-t" x="160" y="58" text-anchor="middle">el contenedor</text>
-        <text class="svg-s" x="160" y="76" text-anchor="middle">aislamiento y timeout</text>
-        <line class="svg-line svg-dash" x1="160" y1="86" x2="160" y2="104" marker-end="url(#fl12)" opacity=".45"/>
+        <rect class="svg-box svg-dash" x="40" y="20" width="200" height="64" opacity=".45"/>
+        <text class="svg-s" x="50" y="38">falta</text>
+        <text class="svg-t" x="140" y="58" text-anchor="middle">contenedor, fase 2</text>
+        <text class="svg-s" x="140" y="76" text-anchor="middle">llm y rlm cruzan el pipe</text>
+        <line class="svg-line svg-dash" x1="140" y1="86" x2="140" y2="106" marker-end="url(#fl12)" opacity=".45"/>
 
-        <rect class="svg-box svg-dash" x="290" y="20" width="160" height="64" opacity=".45"/>
-        <text class="svg-s" x="300" y="38">falta</text>
-        <text class="svg-t" x="370" y="58" text-anchor="middle">un juez</text>
-        <text class="svg-s" x="370" y="76" text-anchor="middle">otra célula</text>
-        <line class="svg-line svg-dash" x1="370" y1="86" x2="370" y2="104" marker-end="url(#fl12)" opacity=".45"/>
+        <rect class="svg-box svg-dash" x="270" y="20" width="180" height="64" opacity=".45"/>
+        <text class="svg-s" x="280" y="38">falta</text>
+        <text class="svg-t" x="360" y="58" text-anchor="middle">la ontología</text>
+        <text class="svg-s" x="360" y="76" text-anchor="middle">como dato, en extra</text>
+        <line class="svg-line svg-dash" x1="360" y1="86" x2="360" y2="106" marker-end="url(#fl12)" opacity=".45"/>
 
         <rect class="svg-box svg-dash" x="480" y="20" width="200" height="64" opacity=".45"/>
         <text class="svg-s" x="490" y="38">falta</text>
         <text class="svg-t" x="580" y="58" text-anchor="middle">cancelación</text>
         <text class="svg-s" x="580" y="76" text-anchor="middle">contextvars + TaskGroup</text>
-        <path class="svg-line svg-dash" d="M580 86 V96 H704 V226 H684" marker-end="url(#fl12)" opacity=".45"/>
+        <path class="svg-line svg-dash" d="M580 86 V96 H704 V366 H684" marker-end="url(#fl12)" opacity=".45"/>
 
-        <rect class="svg-fill" x="60" y="110" width="370" height="80"/>
-        <text class="svg-t" x="80" y="136">rlm/repl</text>
-        <text class="svg-s" x="80" y="158">Workspace · executor · worker · handle</text>
-        <text class="svg-s" x="80" y="176">grounded · recurse · Bridge</text>
+        <rect class="svg-fill" x="40" y="110" width="410" height="190"/>
+        <text class="svg-t" x="56" y="132">catalejo/rlm</text>
+        <text class="svg-s" x="160" y="132">drive · recurse juntan las dos mitades</text>
 
-        <line class="svg-line" x1="434" y1="150" x2="474" y2="150" marker-end="url(#fl12)"/>
-        <text class="svg-s" x="454" y="142" text-anchor="middle">usa</text>
+        <rect class="svg-box" x="56" y="146" width="378" height="50"/>
+        <text class="svg-t" x="68" y="166">celulas/</text>
+        <text class="svg-s" x="150" y="166">no saben dónde corre el código</text>
+        <text class="svg-s" x="68" y="186">worker · handle · executor · grounded · citada · planner</text>
+
+        <line class="svg-line" x1="245" y1="198" x2="245" y2="222" marker-end="url(#fl12)"/>
+        <text class="svg-s" x="257" y="214">usa, y nunca al revés</text>
+
+        <rect class="svg-box" x="56" y="226" width="378" height="50"/>
+        <text class="svg-t" x="68" y="246">repl/</text>
+        <text class="svg-s" x="126" y="246">no sabe qué es una Cell</text>
+        <text class="svg-s" x="68" y="266">Environment · Workspace · Contenedor · grep · Verbos</text>
+
+        <line class="svg-line" x1="454" y1="150" x2="476" y2="150" marker-end="url(#fl12)"/>
+        <text class="svg-s" x="465" y="142" text-anchor="middle">usa</text>
 
         <rect class="svg-fill" x="480" y="110" width="200" height="80"/>
-        <text class="svg-t" x="500" y="136">rlm/llm</text>
+        <text class="svg-t" x="500" y="136">catalejo/llm</text>
         <text class="svg-s" x="500" y="158">Model, el seam</text>
-        <text class="svg-s" x="500" y="176">Gemini en HTTP crudo</text>
+        <text class="svg-s" x="500" y="176">Gemini y OpenAI en HTTP crudo</text>
 
-        <line class="svg-line" x1="250" y1="192" x2="250" y2="206" marker-end="url(#fl12)"/>
-        <text class="svg-s" x="262" y="204">usa el álgebra</text>
-        <line class="svg-line" x1="575" y1="192" x2="575" y2="206" marker-end="url(#fl12)"/>
-        <text class="svg-s" x="587" y="204">usa los tipos</text>
+        <line class="svg-line" x1="245" y1="302" x2="245" y2="326" marker-end="url(#fl12)"/>
+        <text class="svg-s" x="257" y="320">usa el álgebra; repl/ solo PlanOp</text>
+        <line class="svg-line" x1="580" y1="192" x2="580" y2="326" marker-end="url(#fl12)"/>
+        <text class="svg-s" x="592" y="320">usa los tipos</text>
 
-        <rect class="svg-box" x="60" y="210" width="620" height="70" style="stroke:var(--accent);opacity:.85"/>
-        <text class="svg-t" x="80" y="240" style="fill:var(--accent)">rlm/core</text>
-        <text class="svg-s" x="80" y="262">Log · merge · las leyes · Cell · then, fanout, only, identity, loop</text>
-        <text class="svg-s" x="660" y="240" text-anchor="end">no depende de nada</text>
+        <rect class="svg-box" x="40" y="330" width="640" height="70" style="stroke:var(--accent);opacity:.85"/>
+        <text class="svg-t" x="60" y="360" style="fill:var(--accent)">catalejo/core</text>
+        <text class="svg-s" x="60" y="382">Log · merge · las leyes · Cell · then, fanout, only, identity, loop · Plan y admitir</text>
+        <text class="svg-s" x="660" y="360" text-anchor="end">no depende de nada</text>
       </svg>
       <figcaption>
-        El módulo de abajo no importa a ninguno de los otros dos, y por eso las leyes se pueden testear
-        sin red, sin modelo y sin REPL. Las tres cajas punteadas son lo que falta, dibujadas donde
-        enchufan: dos son piezas nuevas alrededor de lo que ya está y ninguna toca el álgebra.
+        Adentro de <code>rlm</code> la flecha va en un solo sentido: <code>celulas/</code> toma de
+        <code>repl/</code> el Protocol, el texto de las herramientas, el colector de verbos y
+        <code>sin_acento</code>, y <code>repl/</code> no importa una célula jamás. Las cajas
+        punteadas son lo que falta, dibujadas donde enchufan, y ninguna toca el álgebra.
       </figcaption>
     </figure>
+
+    <p>
+      El corte no fue una preferencia, fue leer el grafo. La mitad del REPL tiene 919 líneas y la única
+      cosa que importa de <code>core</code> es <code>PlanOp</code>, un tipo de dato. La mitad de las
+      células tiene 700 y cada docstring arranca con "La célula que...". Lo que quedó en el medio es
+      lo que de verdad necesita a las dos: <code>drive</code>, que es <code>then</code> de las células
+      adentro de un <code>loop</code> con nombre, y <code>recurse</code>, que es un <code>Workspace</code>
+      con un agente adentro. El único módulo que cruzaba la línea era <code>citas.py</code>, porque
+      <code>rutas</code> parsea el corpus y <code>citadas</code> parsea la respuesta; <code>rutas</code>
+      se mudó al lado de <code>CABECERA</code> y la frontera quedó verdadera.
+    </p>
 
     <p>
       Lo que hay que retener de todo esto es una sola idea. Elegir bien un tipo y una operación pone las
@@ -2736,8 +2769,8 @@ seen = merge(seen, await agente(seen))</code></pre>
       un voto más alto.
     </p>
 
-<pre><code>uv run pytest    <span class="c"># 173 passed, 4 skipped</span>
-uv run mypy</code></pre>
+<pre><code>uv run pytest    <span class="c"># 389 passed, 6 skipped</span>
+uv run mypy      <span class="c"># 49 archivos, strict</span></code></pre>
   </div>
 </section>
 

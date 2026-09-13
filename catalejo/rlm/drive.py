@@ -18,11 +18,8 @@ from collections.abc import Sequence
 from catalejo.core import Cell, loop, then
 from catalejo.llm import Model
 
-from .environment import Environment
-from .executor import executor
-from .grounding import grounded
-from .handle import Handle
-from .worker import worker
+from .celulas import Handle, executor, grounded, worker
+from .repl import Environment
 
 MAX_STEPS = 12
 

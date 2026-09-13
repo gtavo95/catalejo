@@ -1,7 +1,7 @@
 import asyncio
 
-from catalejo.repl import Workspace, grep
-from catalejo.repl.workspace import MAX_PLEGADOS, _PLEGADOS
+from catalejo.rlm import Workspace, grep
+from catalejo.rlm.repl.workspace import MAX_PLEGADOS, _PLEGADOS
 
 
 class TestWorkspace:

@@ -17,7 +17,9 @@ durante el turno.
 # De dónde sale el conjunto
 
 De las cabeceras `=== ruta ===` del texto que se le dio al modelo, con `rutas`,
-y se calcula en el padre ANTES de armar el Environment. Tiene que ser así porque
+que vive en `repl/workspace.py` al lado de `CABECERA` porque es conocimiento del
+formato del corpus, no de la respuesta. Se calcula en el padre ANTES de armar el
+Environment. Tiene que ser así porque
 la célula corre en el padre y el corpus vive en el workspace, que con el
 `Contenedor` está en otro proceso. Y sale del texto y no de un segundo recorrido
 del disco: una cita a un archivo que existe en el bundle pero no en el corpus es
@@ -25,10 +27,11 @@ tan inventada como una a un archivo que no existe en ninguna parte.
 
 # Un solo parser
 
-`citadas`, `inventada` y `rutas` viven acá y `evals.py` las importa. Es la regla
-que ya rige entre `grounded` y `executor` con `extract_code`: dos células que
-parsean lo mismo con su propio código se desincronizan, dos que llaman a la
-misma función no.
+`citadas` e `inventada` viven acá y `evals.py` las importa. Es la regla que ya
+rige entre `grounded` y `executor` con `extract_code`: dos células que parsean lo
+mismo con su propio código se desincronizan, dos que llaman a la misma función
+no. Lo que se parsea acá es la RESPUESTA, las líneas `FUENTE:`; lo que se parsea
+en el REPL es el corpus.
 
 Compara sin acentos ni mayúsculas. Los archivos del bundle son slugs en
 minúscula, pero el modelo escribe `Viventem.md` a veces, y un error de mayúscula
@@ -52,8 +55,8 @@ from collections.abc import Collection
 
 from catalejo.core import ZERO, Cell, Fail, Log, Message, Role, Status
 
+from ..repl import sin_acento
 from .executor import extract_code
-from .workspace import CABECERA, sin_acento
 
 PREFIJO = "[cita]"
 
@@ -62,11 +65,6 @@ AVISO = (
     "líneas `=== ruta ===`: buscá la ficha con grep({var}, patron) y citá solo los "
     "archivos de los que leíste el dato, o cerrá con `FUENTE: ninguna`."
 )
-
-
-def rutas(texto: str) -> frozenset[str]:
-    """Las rutas que EXISTEN en el texto: las cabeceras `=== ruta ===`."""
-    return frozenset(m.group(1) for m in map(CABECERA.match, texto.splitlines()) if m)
 
 
 def citadas(texto: str) -> tuple[str, ...]:

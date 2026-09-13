@@ -37,7 +37,7 @@ from pathlib import Path
 
 from catalejo.core import Log, Message, Role, loop, then
 from catalejo.llm import Gemini
-from catalejo.repl import Handle, Workspace, executor, grounded, recurse, worker
+from catalejo.rlm import Handle, Workspace, executor, grounded, recurse, worker
 
 CODIGOS = ["E-102", "E-417", "E-500", "W-31"]
 PRODUCTOS = ["tostadora", "licuadora", "cafetera", "batidora"]

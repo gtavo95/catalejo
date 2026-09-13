@@ -2,7 +2,7 @@ import pytest
 
 from catalejo.core import ZERO, Conversation, Fail, Log, Message, Role, Status, loop, then
 from catalejo.llm import Model, Reply, Stub
-from catalejo.repl import Handle, Workspace, executor, render_handle, window, worker
+from catalejo.rlm import Handle, Workspace, executor, render_handle, window, worker
 
 
 def dicho(texto: str, role: Role = Role.ASSISTANT) -> Message:

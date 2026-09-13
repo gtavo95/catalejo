@@ -45,8 +45,8 @@ from catalejo.core import (
     proyectar,
 )
 
+from ..repl import Verbos
 from .executor import extract_code
-from .verbos import Verbos
 
 type Registro = Mapping[str, Callable[[Log], bool]]
 

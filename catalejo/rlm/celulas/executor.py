@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from catalejo.core import Cell, Fail, Log, Message, Role, Status
 
-from .environment import Environment, Output
+from ..repl import Environment, Output
 
 FENCE = "```"
 

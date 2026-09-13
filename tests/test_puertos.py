@@ -53,7 +53,7 @@ class TestElMotorNoNombraProveedores:
     async def test_el_worker_corre_contra_cualquier_model(self) -> None:
         """La prueba de que el puerto alcanza: el álgebra entera se testea sin red."""
         from catalejo.core import Log
-        from catalejo.repl import Handle, worker
+        from catalejo.rlm import Handle, worker
 
         out = await worker(Stub("listo"), Handle())(Log(said=(Message(Role.USER, "hola"),)))
 

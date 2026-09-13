@@ -1,7 +1,7 @@
 """Los builtins del plan: apilar sin romper el snippet que los llamó."""
 
 from catalejo.core import PlanOp
-from catalejo.repl import Verbos, Workspace
+from catalejo.rlm import Verbos, Workspace
 
 
 class TestColector:

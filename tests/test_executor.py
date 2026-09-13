@@ -1,5 +1,5 @@
 from catalejo.core import ZERO, Cell, Fail, Log, Message, Role, Status, loop, then
-from catalejo.repl import Output, Stub, Workspace, executor, extract_code, render
+from catalejo.rlm import Output, Stub, Workspace, executor, extract_code, render
 
 
 def dicho(texto: str, role: Role = Role.ASSISTANT) -> Log:

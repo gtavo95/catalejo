@@ -5,7 +5,7 @@ import pytest
 
 from catalejo.core import ZERO, Conversation, Fail, Log, Message, Role, Status, loop, then
 from catalejo.llm import Gemini, Reply
-from catalejo.repl import Bridge, Handle, answer, executor, note, recurse, worker
+from catalejo.rlm import Bridge, Handle, answer, executor, note, recurse, worker
 
 COSTO = 10
 

@@ -8,6 +8,7 @@
     uv run evals.py --agro          las preguntas agronómicas, contra el agente de agro.py
     uv run evals.py --agro --plan   las mismas, con la checklist prendida
     uv run evals.py --agro --sin-citas   las mismas, sin la célula de citas (el arm baseline)
+    uv run evals.py --agro --ontologia   las mismas, con `objetivos` como dato en el REPL
     uv run evals.py --openai        el mismo examen contra OpenAI
 
 El corpus es `successo-okf`, la wiki de producto de una empresa de bioinsumos:
@@ -86,7 +87,7 @@ from pathlib import Path
 import agro
 from catalejo.core import Cell, Log, Message, Role
 from catalejo.llm import Provider
-from catalejo.repl import Handle, Workspace, drive, inventada, recurse, rutas
+from catalejo.rlm import Handle, Workspace, drive, inventada, recurse, rutas
 
 AVISO = re.compile(r"\[(\w+)\]")
 
@@ -188,11 +189,14 @@ def montaje(argv: list[str]) -> Montaje:
     if "--agro" in argv:
         plan = "--plan" in argv
         citas = "--sin-citas" not in argv
+        ontologia = "--ontologia" in argv
         return Montaje(
             tsv="agro.tsv",
             corpus=agro.corpus,
-            montar=lambda texto, modelo: agro.armar(texto, modelo, ver=False, plan=plan, citas=citas),
-            pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan),
+            montar=lambda texto, modelo: agro.armar(
+                texto, modelo, ver=False, plan=plan, citas=citas, ontologia=ontologia
+            ),
+            pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan, ontologia=ontologia),
         )
     recursivo = "--recurse" in argv
     return Montaje(

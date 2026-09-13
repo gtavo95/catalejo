@@ -7,7 +7,7 @@ import pytest
 
 from catalejo.core import ZERO, Fail, Log, Message, Role, loop, then
 from catalejo.llm import OpenAI, OpenAIError, from_completion, to_messages
-from catalejo.repl import Handle, Workspace, executor, worker
+from catalejo.rlm import Handle, Workspace, executor, worker
 
 OK: dict[str, Any] = {
     "choices": [{"message": {"role": "assistant", "content": "listo"}, "finish_reason": "stop"}],
