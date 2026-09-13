@@ -120,6 +120,22 @@ class TestResumir:
 
         assert r.turnos == 5.0
 
+    def test_cuenta_los_avisos_de_cada_celula_y_no_la_salida_del_repl(self) -> None:
+        """Si el arm con una célula gasta más, hay que poder ver si la célula habló."""
+        said = (
+            Message(Role.ASSISTANT, "de memoria"),
+            Message(Role.USER, "[grounding] Todavía no ejecutaste nada"),
+            Message(Role.ASSISTANT, "```python\nprint(1)\n```"),
+            Message(Role.USER, "[repl] salida:\n1"),
+            Message(Role.ASSISTANT, "FUENTE: productos/no.md"),
+            Message(Role.USER, "[cita] Citaste `productos/no.md`"),
+        )
+        c = Corrida(caso=UNO, vuelta=0, out=Log(said=said), respuesta="", seg=1.0, ok=True)
+
+        r = resumir([c, corrida(vuelta=1)], 2)
+
+        assert r.avisos == {"grounding": 1, "cita": 1}
+
     def test_las_rutas_fantasma_se_juntan_entre_vueltas(self) -> None:
         """Una ruta inventada en la vuelta 2 cuenta aunque la 1 haya salido limpia."""
         corridas = [corrida(vuelta=0), corrida(vuelta=1, fantasmas=("productos/no.md",))]

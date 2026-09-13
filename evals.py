@@ -7,6 +7,7 @@
     uv run evals.py --repeats=3     cada caso tres veces, para ver cuál flipa
     uv run evals.py --agro          las preguntas agronómicas, contra el agente de agro.py
     uv run evals.py --agro --plan   las mismas, con la checklist prendida
+    uv run evals.py --agro --sin-citas   las mismas, sin la célula de citas (el arm baseline)
     uv run evals.py --openai        el mismo examen contra OpenAI
 
 El corpus es `successo-okf`, la wiki de producto de una empresa de bioinsumos:
@@ -59,6 +60,12 @@ Lo que n compra es varianza adentro de un caso, así que lo que hay que mirar de
 reporte es la lista de flippers: el caso estable repetido seis veces es gasto
 muerto.
 
+Los tokens tienen piso de ruido, y es alto. El mismo código, con luna, corrido
+tres veces el mismo día dio 9.547, 12.576 y 11.294 medios por corrida (filas
+`cabecera_por_documento` y `cita_cerrada` de la bitácora), con la célula de
+citas sin hablar nunca en las dos últimas. Un Δ de tokens menor que ±30% a n=3
+no se lee; lo que sí se lee es aciertos, flippers, y los avisos de células.
+
 Va con igual y no con espacio, y no es gusto: el filtro por id se lleva todo
 argumento que no empiece con guion, así que `--repeats 3` leería `3` como id de
 caso y correría cero casos.
@@ -67,6 +74,7 @@ caso y correría cero casos.
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 import sys
 import time
@@ -79,6 +87,8 @@ import agro
 from catalejo.core import Cell, Log, Message, Role
 from catalejo.llm import Provider
 from catalejo.repl import Handle, Workspace, drive, inventada, recurse, rutas
+
+AVISO = re.compile(r"\[(\w+)\]")
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
 
@@ -177,7 +187,7 @@ def montaje(argv: list[str]) -> Montaje:
     """
     if "--agro" in argv:
         plan = "--plan" in argv
-        citas = "--citas" in argv
+        citas = "--sin-citas" not in argv
         return Montaje(
             tsv="agro.tsv",
             corpus=agro.corpus,
@@ -292,6 +302,24 @@ class Resumen:
     turnos: float
     delegadas: int
     reads: int
+    avisos: dict[str, int]
+
+
+def avisos(corridas: Sequence[Corrida]) -> dict[str, int]:
+    """Cuántas veces habló cada célula, por su prefijo: `[grounding]`, `[cita]`.
+
+    Sin esto un A/B de una célula no se puede leer: si el arm con la célula
+    gasta más, hay que saber si es porque avisó y el modelo volvió a contestar
+    o porque el proveedor tuvo un día caro. `[repl]` es la salida del
+    executor y no un aviso, así que no cuenta.
+    """
+    cuenta: dict[str, int] = {}
+    for c in corridas:
+        for m in c.out.said:
+            m_ = AVISO.match(m.text) if m.role is Role.USER else None
+            if m_ and m_.group(1) != "repl":
+                cuenta[m_.group(1)] = cuenta.get(m_.group(1), 0) + 1
+    return cuenta
 
 
 def resumir(corridas: Sequence[Corrida], n: int) -> Resumen:
@@ -355,6 +383,7 @@ def resumir(corridas: Sequence[Corrida], n: int) -> Resumen:
         turnos=sum(len(c.out.said) for c in vivas) / piso,
         delegadas=sum(c.delegadas for c in corridas),
         reads=sum(c.out.reads for c in corridas),
+        avisos=avisos(corridas),
     )
 
 
@@ -467,6 +496,9 @@ async def main(argv: list[str]) -> None:
     if r.delegadas:
         print(f"  lecturas delegadas        {r.delegadas}")
     print(f"  consultas al corpus       {r.reads}")
+    if r.avisos:
+        avisado = ", ".join(f"[{quien}] {n}" for quien, n in sorted(r.avisos.items()))
+        print(f"  avisos de células         {avisado}")
     print(f"  relleno equivalente       {len(texto) // 4 * max(r.vivas, 1):,} tokens")
     print(f"\n  para bitacora.tsv, con palanca, arm y nota tuyas:\n  {fila(r)}")
 

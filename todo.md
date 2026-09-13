@@ -19,16 +19,9 @@ modelo ve no cambia salvo en un timeout, y hay cero timeouts medidos.
 
 Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es el lado no confiable
 y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la inyección;
-para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 4.
+para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 3.
 
-## 2. El A/B de `--citas`
-
-Está cableado y con tests (`citas.py`, palanca `cita_cerrada`, arms `sin_cita`/`con_cita`), y su
-baseline ya existe: la fila `cabecera_por_documento por_documento` de la bitácora, 9/9 con luna.
-Con luna el Δ esperado es cero tokens y cero regresiones: zompopo ya pasa 3/3 sin la célula, que
-es seguro y no cura. Va con `uv run --env-file .env evals.py --agro --openai --citas --repeats=3`.
-
-## 3. El grep que afloja el patrón cuando devuelve cero (rebajado por el 4)
+## 2. El grep que afloja el patrón cuando devuelve cero (rebajado por el 3)
 
 El cero es el estado donde el modelo tiene menos información y más incentivo a rellenar, y es
 exactamente donde se inventó las tres fichas. Hoy `grep` dice "0 líneas casan" y lo suelta ahí.
@@ -43,10 +36,10 @@ Rebajado porque en un corpus con ontología, que es el caso principal, `ontologi
 está adentro del texto: el cero de `grep` ya es una afirmación sobre fichas y vocabulario
 juntos, y con la cabecera por documento un hit en `ontologia/` se distingue de uno en una ficha
 sin abrir nada. Lo que falta no es ensanchar a ciegas sino que el modelo lo sepa y pueda
-recorrer padre y alias con estructura, que es el punto 4. Vuelve si un corpus sin ontología lo
+recorrer padre y alias con estructura, que es el punto 3. Vuelve si un corpus sin ontología lo
 pide.
 
-## 4. La ontología como dato, no como chequeo de prosa
+## 3. La ontología como dato, no como chequeo de prosa
 
 La cita contra el conjunto cerrado ya está (`citas.py`): las rutas que la respuesta declara
 tienen que existir. Lo que no mira es la prosa, y no puede: una respuesta a "¿qué uso para el
@@ -61,7 +54,7 @@ hacer `grep(catalogo, 'zompopo')` y recibir cero porque `ontologia/` está en el
 el conjunto cerrado para que el cero sea una afirmación y no una ausencia. Es palanca de prompt y
 builtin, y lleva A/B.
 
-## 5. El two-phase para rescatar el `doc=`
+## 4. El two-phase para rescatar el `doc=`
 
 El arm `con_doc` ganó -58% en tokens y perdió calidad: tres casos de 3/3 a 2/3, tres formas
 distintas, todas sin consultar el contexto. El gate lo bloquea. Desbloquearlo pide n=6 en los DOS
@@ -73,12 +66,15 @@ nuevo y arranca de cero en n. Ojo con el mecanismo: la falla fue hacer DE MENOS 
 5.7), y two-phase fuerza más llamadas, lo cual es plausible como cura y también se come parte del
 ahorro.
 
-## 6. `max_hits=50`, nunca medido
+## 5. `max_hits=50`, nunca medido
 
 Entre 1.229 y 3.079 tokens por llamada sobre el bundle, contra una corrida entera que promedia
 7.788. Es el default más caro sin A/B. Bajarlo a 20 es una palanca de una palabra y la red ya está
-puesta: la cabecera dice el total de verdad y cómo pedir el resto. El riesgo es que canjee tokens
-por turnos, que es justo lo que la bitácora sabe leer.
+puesta: la cabecera dice el total de verdad, cómo pedir el resto y ahora también en qué documentos
+está. El riesgo es que canjee tokens por turnos, que es justo lo que la bitácora sabe leer. Ojo con
+la lectura: el piso de ruido de spent a n=3 es ±30% (tres corridas del mismo código dieron 9.5k,
+12.6k y 11.3k), así que un ahorro menor que eso no se ve, y el argumento tiene que ser por turnos
+y aciertos.
 
 ## Cerrado, no reabrir
 

@@ -5,6 +5,7 @@
     uv run agro.py --ver "..."           además, la transcripción completa
     uv run agro.py --openai "..."        el mismo agente contra OpenAI
     uv run agro.py --plan "..."          además, la checklist del turno
+    uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
 
 El corpus son las 39 fichas de producto y la ontología de `successo-okf`: 360 KB,
 ~90k tokens. Cada ficha trae un bloque `# Agronomía` en JSON con los cultivos
@@ -380,7 +381,7 @@ def traza() -> Cell:
 
 
 def armar(
-    texto: str, modelo: Provider, *, ver: bool, plan: bool = False, citas: bool = False
+    texto: str, modelo: Provider, *, ver: bool, plan: bool = False, citas: bool = True
 ) -> tuple[Cell, Workspace]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
@@ -401,11 +402,13 @@ def armar(
     cambia la terminación del agente, que es lo más delicado que tiene, y hay que
     poder medir las dos ramas en la misma tarde.
 
-    Con `citas=True` entra `citada`, que compara las `FUENTE:` de la respuesta
-    contra las rutas del corpus y avisa cuando una no existe. Es bandera por lo
-    mismo que `plan`: cambia lo que el modelo ve, así que es una palanca y se
-    mide. El conjunto sale del texto acá, en el padre, porque el corpus vive en
-    el Environment y la célula no.
+    `citada` va por default y `citas=False` la saca. Compara las `FUENTE:` de la
+    respuesta contra las rutas del corpus y avisa cuando una no existe. Se midió
+    (filas `cita_cerrada` de la bitácora): con luna no habló en 54 corridas y no
+    dio un falso positivo, así que no cambia nada de lo que el modelo ve hasta
+    que cite una ficha inventada, que es justo cuando tiene que hablar. Es un
+    regex sobre el último mensaje; el conjunto sale del texto acá, en el padre,
+    porque el corpus vive en el Environment y la célula no.
 
     `traza` va después del planner y no antes: mira los últimos dichos del paso, y
     si corriera primero, el mensaje del plan todavía no existiría.
@@ -573,7 +576,7 @@ def proveedor(argv: list[str]) -> Provider:
 async def main(argv: list[str]) -> None:
     ver = "--ver" in argv
     plan = "--plan" in argv
-    citas = "--citas" in argv
+    citas = "--sin-citas" not in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
 
     texto = corpus()
@@ -585,7 +588,7 @@ async def main(argv: list[str]) -> None:
     print(
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
-        f"· {modelo.model}{' · con plan' if plan else ''}{' · con citas' if citas else ''}"
+        f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
     )
 
     try:
