@@ -3,14 +3,17 @@
 from catalejo.core import Fail, Log, Message, Role
 
 from agro import (
+    BUNDLE,
     BUSCAR,
     BUSCAR_EN_OBJETIVOS,
     SIN_CONSULTAR,
+    claves,
     contrato,
     final,
     indice,
     objetivos,
     pedido,
+    resolver,
     vocabulario,
 )
 
@@ -120,6 +123,57 @@ class TestVocabulario:
         assert vocabulario("solo prosa\n| no | es | la | tabla |") == []
 
 
+CULTIVOS = """| id | etiqueta | padre | alias | nota |
+|---|---|---|---|---|
+| calabacita | Calabacita | cucurbitaceas | zucchini, calabacín |  |
+| guicoy | Güicoy | cucurbitaceas | güicoy, ayote |  |
+| cafe | Café | industriales | cafeto |  |
+"""
+
+
+class TestResolver:
+    """Los cultivos del frontmatter, como los escribe la ficha, a su id por la hoja."""
+
+    def test_id_etiqueta_y_alias_resuelven_plegando_caso_y_acentos(self) -> None:
+        hoja = claves(vocabulario(CULTIVOS))
+
+        assert resolver(["Zucchini", "GÜICOY", "Cafe", "calabacita"], hoja) == ["calabacita", "guicoy", "cafe"]
+
+    def test_un_termino_desconocido_se_conserva_plegado(self) -> None:
+        hoja = claves(vocabulario(CULTIVOS))
+
+        assert resolver(["Café", "Papayo"], hoja) == ["cafe", "papayo"]
+
+    def test_un_escalar_no_es_una_lista(self) -> None:
+        hoja = claves(vocabulario(CULTIVOS))
+
+        assert resolver("all_crops", hoja) == []
+        assert resolver("not_applicable", hoja) == []
+
+
+class TestIndice:
+    """Sobre el bundle de verdad: desde el 13 de septiembre de 2026 el perfil ya no
+    trae `crops`, así que `cultivos` sale de resolver `certified_crops`, y tiene que
+    dar lo mismo que daba `crops` antes: ids de la hoja, uno por término."""
+
+    def test_toda_lista_certificada_resuelve_a_ids_de_la_hoja(self) -> None:
+        hoja = {e["id"] for e in vocabulario((BUNDLE / "ontologia" / "cultivos.md").read_text())}
+        con_lista = [r for r in indice() if isinstance(r["certificados"], list)]
+
+        assert con_lista
+        for r in con_lista:
+            assert r["cultivos"], r["nombre"]
+            assert set(r["cultivos"]) <= hoja, (r["nombre"], set(r["cultivos"]) - hoja)
+
+    def test_un_escalar_deja_cultivos_vacio_y_el_alcance_lo_dice(self) -> None:
+        escalares = [r for r in indice() if not isinstance(r["certificados"], list)]
+
+        assert escalares
+        for r in escalares:
+            assert r["cultivos"] == [], r["nombre"]
+            assert r["alcance"] in {"all_crops", "not_applicable"}, r["nombre"]
+
+
 class TestObjetivos:
     """Sobre el bundle de verdad, porque el join es contra las fichas de verdad."""
 
@@ -155,6 +209,18 @@ class TestContrato:
         assert "`ontologia/objetivos.md` tiene los alias" not in con
         assert "En el REPL tenés `objetivos`" in con
         assert con.replace(BUSCAR_EN_OBJETIVOS, BUSCAR) == contrato()
+
+    def test_el_tipo_de_producto_es_un_eje_en_las_dos_variantes(self) -> None:
+        """La viñeta de `tags` va afuera de BUSCAR, así que `--ontologia` no la toca.
+
+        Antes de esta viñeta, "algo para el tratamiento del agua" salía 1 de 3: el
+        modelo buscaba `corrector de pH|buffer` y la ficha de Novicor dice "corrector
+        de dureza". El tag `corrector-de-dureza` estaba en `productos` desde siempre;
+        lo que no estaba era una línea que dijera que ese eje existe.
+        """
+        for con in (contrato(), contrato(ontologia=True)):
+            assert "el eje es `tags` en `productos`" in con
+            assert "`ontologia/tipos-producto.md`" in con
 
     def test_el_pedido_lleva_el_contrato_que_le_piden(self) -> None:
         assert "`objetivos`" not in pedido("¿zompopo?", ())

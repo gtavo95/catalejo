@@ -11,10 +11,11 @@
     uv run agro.py --un-paso "..."       el grep de antes, que muestra las líneas, sin `read`
 
 El corpus son las 39 fichas de producto y la ontología de `successo-okf`: 360 KB,
-~90k tokens. Cada ficha trae un bloque `# Agronomía` en JSON con los cultivos
-certificados, las plagas con su nombre científico, y las dosis con su vía, su
-volumen de agua y sus restricciones. Eso es lo que hace que la pregunta
-agronómica se pueda contestar con un hecho en vez de con una impresión.
+~90k tokens. Cada ficha trae `certified_crops` en el frontmatter, con los cultivos
+del registro, y un bloque `# Agronomía` en JSON con las plagas con su nombre
+científico, y las dosis con su vía, su volumen de agua y sus restricciones. Eso es
+lo que hace que la pregunta agronómica se pueda contestar con un hecho en vez de
+con una impresión.
 
 # Por qué esta pregunta necesita el REPL
 
@@ -63,6 +64,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +83,7 @@ from catalejo.rlm import (
     render_plan,
     rutas,
 )
+from catalejo.rlm.repl import sin_acento
 
 BUNDLE = Path(__file__).resolve().parent.parent / "okf" / "successo-okf"
 
@@ -91,7 +94,7 @@ ESQUEMA = (
     "cada uno precedido por una línea `=== ruta ===`. En `productos/` hay una ficha por "
     "producto: frontmatter con `tags` (insecticida, fungicida, foliar, apto-organico) y "
     "`certified_crops`, un resumen, presentaciones con precios, ingredientes, y un bloque "
-    "`# Agronomía` en JSON que es donde está el dato duro. Ese bloque trae `crops`, "
+    "`# Agronomía` en JSON que es donde está el dato duro. Ese bloque trae `crop_scope`, "
     "`targets` (cada plaga con su `name`, su `kind` y sus `aliases`, que traen el nombre "
     "científico), `overrides` "
     "con los `regimens` de dosis (`dose` con `min`, `max`, `unit` y `basis`, más `route` y "
@@ -113,11 +116,30 @@ BUSCAR_EN_OBJETIVOS = """- Buscá en el catálogo antes de opinar. En el REPL te
   casa con nada, el catálogo no cubre esa plaga, y eso se dice antes de recomendar.
 """
 
+TIPO = """- Si el cliente pide un tipo de producto y no una plaga (un adherente, algo para el agua,
+  un enraizador), el eje es `tags` en `productos`. Son pocos, así que listalos todos en
+  una línea y elegí de ahí, en vez de adivinar con grep la palabra que usa la ficha.
+  `ontologia/tipos-producto.md` tiene la etiqueta y los alias de cada tag.
+"""
+"""El tercer eje, después de plaga y cultivo: qué tipo de cosa pide el cliente.
+
+Salió de "algo para el tratamiento del agua". Novicor 96 SP existe y es un corrector
+de dureza, y el modelo lo daba por inexistente 2 de 3 veces: buscaba `corrector de
+pH|buffer|acidificante` y la ficha dice "corrector de dureza", "buferiza". Con grep
+hay que adivinar la palabra; con un conjunto cerrado no. El tag estaba en `productos`
+desde siempre y la hoja de alias en el corpus; lo que faltaba era una línea que
+dijera que el eje existe. Va acá y no en el preámbulo por la misma medición que
+`nota()`, y no es un builtin porque el dato ya está. Medido (filas `eje_tipo` de la
+bitácora, n=3, 10 casos): novicor 2/3 -> 3/3, cero regresiones, +3% tokens que es
+ruido. Si un día no alcanza, el paso siguiente es `tipos` como dato, igual que
+`objetivos`, con el join por `tags`.
+"""
+
 CONTRATO = f"""
 
 Para contestar esto:
 
-{BUSCAR}- Si hay producto, decí la dosis tal cual está: el número, la unidad y la base (l/ha),
+{BUSCAR}{TIPO}- Si hay producto, decí la dosis tal cual está: el número, la unidad y la base (l/ha),
   la vía de aplicación y el volumen de agua. No conviertas unidades ni promedies un
   rango sin decir que lo hiciste.
 - Decí si el cultivo está en `certified_crops` de ese producto o no. `crop_scope` separa
@@ -270,13 +292,22 @@ def agronomia(texto: str) -> dict[str, Any]:
     return datos if isinstance(datos, dict) else {"error": "el bloque no es un objeto"}
 
 
-def registro(ruta: Path, texto: str) -> dict[str, Any]:
+def registro(ruta: Path, texto: str, hoja: Mapping[str, str] | None = None) -> dict[str, Any]:
     """Un producto como dato consultable: lo que el frontmatter y el bloque ya dicen.
 
-    Es un índice, no una fuente. Nada acá se calcula ni se normaliza: los cultivos
-    certificados van como los escribe la ficha y las dosis van como están, con su
-    unidad y su base. Un campo vacío quiere decir que la ficha no lo trae, y las 38
-    fichas parsean, así que vacío nunca quiere decir que el parser falló.
+    Es un índice, no una fuente. Nada acá se calcula ni se normaliza, con una
+    excepción: `cultivos` son los ids de `certificados` resueltos por la hoja de
+    cultivos. Hasta el 13 de septiembre de 2026 el perfil repetía esa lista en
+    `crops`, en ids, y el índice la copiaba; ese día el bundle alineó las 24 fichas
+    con lista a `crop_scope: all_crops`, que rechaza `crops`, así que la lista vive
+    una sola vez, en el frontmatter, con las palabras de la ficha. Resolverla acá es
+    lo mismo que hacía `verificar.sh` para exigir que las dos copias coincidieran,
+    y deja el índice como estaba: el id es lo que usan los `overrides` para decir en
+    qué cultivo cambia la dosis, y filtrar por id no depende de la tilde.
+    `certificados` sigue tal cual, y con un escalar (`all_crops`, `not_applicable`)
+    `cultivos` queda vacío. Las dosis van como están, con su unidad y su base. Un
+    campo vacío quiere decir que la ficha no lo trae, y las 38 fichas parsean, así
+    que vacío nunca quiere decir que el parser falló.
 
     `dosis[].para` es el `match` del override tal cual, que puede venir por plaga
     (`target_ids`), por cultivo (`crops`) o por vía (`routes`). Aplanarlo a una sola
@@ -285,6 +316,7 @@ def registro(ruta: Path, texto: str) -> dict[str, Any]:
     """
     fm = frontmatter(texto)
     ag = agronomia(texto)
+    certificados = fm.get("certified_crops", [])
     dosis = [
         {"para": {}, "dosis": r.get("dose", {}), "via": r.get("route", ""), "agua": r.get("water_volume", {})}
         for r in ag.get("default_regimens", [])
@@ -305,7 +337,7 @@ def registro(ruta: Path, texto: str) -> dict[str, Any]:
         "ruta": f"productos/{ruta.name}",
         "tags": fm.get("tags", []),
         "certificados": fm.get("certified_crops", []),
-        "cultivos": ag.get("crops", []),
+        "cultivos": resolver(certificados, hoja or {}),
         "alcance": ag.get("crop_scope", ""),
         "plagas": [
             {"id": t.get("id", ""), "nombre": t.get("name", ""), "alias": t.get("aliases", [])}
@@ -324,11 +356,49 @@ def indice() -> list[dict[str, Any]]:
     del plan. Nombrarlo en el preámbulo costaba caro y la razón está abajo, en
     `nota`. Sigue alcanzable donde siempre estuvo: adentro de `catalogo`, por grep.
     """
+    hoja = claves(vocabulario((BUNDLE / "ontologia" / "cultivos.md").read_text(errors="replace")))
     return [
-        registro(f, f.read_text(errors="replace"))
+        registro(f, f.read_text(errors="replace"), hoja)
         for f in sorted((BUNDLE / "productos").glob("*.md"))
         if f.name != "index.md"
     ]
+
+
+def claves(hoja: list[dict[str, Any]]) -> dict[str, str]:
+    """De una hoja de ontología, el diccionario término plegado -> id.
+
+    Entran el id, la etiqueta y cada alias, plegando caso y acentos con el mismo
+    `sin_acento` de `grep`, porque la ficha escribe "Güicoy" y "Sandía" y la hoja
+    los lista como alias con o sin tilde. Si dos filas reclaman el mismo término,
+    gana la primera, que es lo que hace `verificar.sh` al leer la hoja de arriba
+    abajo.
+    """
+    tabla: dict[str, str] = {}
+    for fila in hoja:
+        for termino in (fila.get("id", ""), fila.get("etiqueta", ""), *fila.get("alias", [])):
+            clave = sin_acento(termino).lower().strip()
+            if clave:
+                tabla.setdefault(clave, fila["id"])
+    return tabla
+
+
+def resolver(terminos: object, hoja: Mapping[str, str]) -> list[str]:
+    """Los ids de una lista de cultivos escrita como la escribe la ficha.
+
+    Un término que la hoja no conoce se conserva plegado, en minúscula y sin tilde,
+    porque tirarlo sería un cultivo certificado que desaparece del índice sin aviso
+    e inventarle un id sería peor. Sobre el bundle no pasa: `verificar.sh` rechaza
+    la página. Un escalar (`all_crops`, `not_applicable`) no es una lista y da vacío.
+    """
+    if not isinstance(terminos, list):
+        return []
+    vistos: list[str] = []
+    for termino in terminos:
+        clave = sin_acento(str(termino)).lower().strip()
+        id_ = hoja.get(clave, clave)
+        if id_ and id_ not in vistos:
+            vistos.append(id_)
+    return vistos
 
 
 def vocabulario(texto: str) -> list[dict[str, Any]]:
