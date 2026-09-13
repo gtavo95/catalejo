@@ -21,7 +21,7 @@ Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es 
 y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la inyección;
 para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 3.
 
-## 2. El grep que afloja el patrón cuando devuelve cero (rebajado por el 3)
+## 2. El grep que afloja el patrón cuando devuelve cero (rebajado, y el 3 lo confirmó)
 
 El cero es el estado donde el modelo tiene menos información y más incentivo a rellenar, y es
 exactamente donde se inventó las tres fichas. Hoy `grep` dice "0 líneas casan" y lo suelta ahí.
@@ -33,26 +33,37 @@ que evita la invención. "0 con 'zompopo', 0 con 'zompopos', 0 con 'hormiga arri
 no tiene esa plaga."
 
 Rebajado porque en un corpus con ontología, que es el caso principal, `ontologia/objetivos.md`
-está adentro del texto: el cero de `grep` ya es una afirmación sobre fichas y vocabulario
-juntos, y con la cabecera por documento un hit en `ontologia/` se distingue de uno en una ficha
-sin abrir nada. Lo que falta no es ensanchar a ciegas sino que el modelo lo sepa y pueda
-recorrer padre y alias con estructura, que es el punto 3. Vuelve si un corpus sin ontología lo
+está adentro del texto y la cabecera por documento distingue un hit ahí de uno en una ficha. El
+A/B del punto 3 lo midió: con la hoja como texto el modelo baja de `masticadores` al hijo y de ahí
+a la ficha en 1 a 3 consultas, sin que nadie le dé el árbol. Vuelve si un corpus sin ontología lo
 pide.
 
-## 3. La ontología como dato, no como chequeo de prosa
+## 3. La ontología como dato: medido, queda como flag
 
-La cita contra el conjunto cerrado ya está (`citas.py`): las rutas que la respuesta declara
-tienen que existir. Lo que no mira es la prosa, y no puede: una respuesta a "¿qué uso para el
-zompopo?" va a decir "zompopo" porque la pregunta lo dice, y lo que está mal es recomendar un
-producto para eso, que no es un string. Un chequeo determinístico de nombres en prosa contra
-`ontologia/` no está bien definido.
+Lo que se probó (`--ontologia`, filas `ontologia_como_dato` de la bitácora): `objetivos` en el
+REPL, la tabla de `ontologia/objetivos.md` parseada con `id`, `etiqueta`, `padre`, `alias`, `nota`
+y `fichas`, y la primera viñeta del CONTRATO diciendo que si el cliente no casa con nada ahí, el
+catálogo no lo cubre.
 
-Lo que sí es determinístico y barato: darle la ontología como dato. `objetivos` en `extra`,
-parseado de las tablas `| id | etiqueta | padre | alias |` (71 entradas), más una línea del
-`CONTRATO`: "si la plaga no está en `objetivos`, decilo antes de recomendar". El modelo ya puede
-hacer `grep(catalogo, 'zompopo')` y recibir cero porque `ontologia/` está en el corpus; esto le da
-el conjunto cerrado para que el cero sea una afirmación y no una ausencia. Es palanca de prompt y
-builtin, y lleva A/B.
+Lo que salió. La versión que le daba solo el `id` y le pedía el join contra `plagas` abrió un
+camino nuevo a un falso cero: en rodenticida el modelo escribió el join mal (dict contra lista de
+ids), obtuvo cero, y cerró con "el catálogo contempla ratas pero ningún producto las cubre". Con la
+hoja como texto ese cero no existía. Por eso `fichas` viene calculado en `agro.objetivos`, con los
+hijos adentro, y el modelo no escribe joins. Con eso: 0 regresiones atribuibles, zompopo cierra en
+3 turnos las tres veces (mira el vocabulario, mira el texto, dice que no) contra 5/5/13 del
+baseline, y cogollero paga un turno más porque `grep('cogollo')` caía en la ficha directo. No
+mueve aciertos, ni en la suite ni en "insectos masticadores en el maíz" a mano, que es el padre
+que ninguna ficha nombra. La ontología ya es dato para `grep` porque está en el corpus.
+
+Lo que lo haría default: un caso donde el texto no alcance, o sea un alias que la ficha no escribe
+y que la hoja sí, o un corpus donde `ontologia/` no quepa en el texto. Hoy 65 de 69 conceptos
+aparecen en las fichas con su nombre común y los 4 restantes son padres de agrupación, que el
+modelo resuelve leyendo las filas. `agro.vocabulario` queda para cuando aparezca.
+
+Lo que sigue sin tocarse: la prosa. Una respuesta a "¿qué uso para el zompopo?" va a decir
+"zompopo" porque la pregunta lo dice, y lo que está mal es recomendar un producto para eso, que no
+es un string. Un chequeo determinístico de nombres en prosa contra `ontologia/` no está bien
+definido.
 
 ## 4. El two-phase para rescatar el `doc=`
 

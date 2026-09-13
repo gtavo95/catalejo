@@ -6,6 +6,7 @@
     uv run agro.py --openai "..."        el mismo agente contra OpenAI
     uv run agro.py --plan "..."          además, la checklist del turno
     uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
+    uv run agro.py --ontologia "..."     además, `objetivos` como dato en el REPL
 
 El corpus son las 39 fichas de producto y la ontología de `successo-okf`: 360 KB,
 ~90k tokens. Cada ficha trae un bloque `# Agronomía` en JSON con los cultivos
@@ -98,13 +99,23 @@ ESQUEMA = (
     "`objetivos.md` con los alias de cada plaga, `vias.md`, `unidades.md`, `paises.md`"
 )
 
-CONTRATO = """
+BUSCAR = """- Buscá en el catálogo antes de opinar. Si el término del cliente no aparece, probá el
+  nombre científico: `ontologia/objetivos.md` tiene los alias de cada plaga.
+"""
+
+BUSCAR_EN_OBJETIVOS = """- Buscá en el catálogo antes de opinar. En el REPL tenés `objetivos`, el vocabulario
+  cerrado de plagas, una lista de dicts con `id`, `etiqueta`, `padre`, `alias` (lista),
+  `nota` y `fichas`, las rutas de los productos que cubren esa plaga, con las especies
+  hijas incluidas. Se filtra con Python, no con `grep`, que es para el texto. Buscá lo
+  que dice el cliente en `etiqueta` y en `alias`; si casa, `fichas` dice qué leer. Si no
+  casa con nada, el catálogo no cubre esa plaga, y eso se dice antes de recomendar.
+"""
+
+CONTRATO = f"""
 
 Para contestar esto:
 
-- Buscá en el catálogo antes de opinar. Si el término del cliente no aparece, probá el
-  nombre científico: `ontologia/objetivos.md` tiene los alias de cada plaga.
-- Si hay producto, decí la dosis tal cual está: el número, la unidad y la base (l/ha),
+{BUSCAR}- Si hay producto, decí la dosis tal cual está: el número, la unidad y la base (l/ha),
   la vía de aplicación y el volumen de agua. No conviertas unidades ni promedies un
   rango sin decir que lo hiciste.
 - Decí si el cultivo está en `certified_crops` de ese producto o no. `crop_scope` separa
@@ -121,6 +132,20 @@ Para contestar esto:
 - Cerrá con una línea `FUENTE: productos/x.md` por cada archivo del que sacaste un dato,
   o `FUENTE: ninguna` si no salió del catálogo.
 """
+
+
+def contrato(*, ontologia: bool = False) -> str:
+    """El CONTRATO, y con `ontologia=True` el que nombra `objetivos` en vez de la hoja.
+
+    Cambia una sola viñeta, la primera, porque es la que dice qué hacer cuando el
+    término del cliente no aparece. Hoy la respuesta es "probá el nombre
+    científico" y un grep sobre `ontologia/objetivos.md`, que devuelve la fila como
+    texto. Con el vocabulario en el REPL la respuesta es recorrer una lista: si casa,
+    la entrada trae las `fichas` que leer; si no casa, el catálogo no lo cubre y el
+    cero es una afirmación sobre un conjunto cerrado, no una ausencia en un texto. Es
+    palanca de prompt y de builtin a la vez, así que se mide con las dos juntas.
+    """
+    return CONTRATO.replace(BUSCAR, BUSCAR_EN_OBJETIVOS) if ontologia else CONTRATO
 
 
 REGISTRO: Registro = {
@@ -304,6 +329,73 @@ def indice() -> list[dict[str, Any]]:
     ]
 
 
+def vocabulario(texto: str) -> list[dict[str, Any]]:
+    """La tabla de conceptos de una hoja de `ontologia/`, una entrada por fila.
+
+    Lee como manda `FORMATO.md`: la primera tabla que abre con `| id |` es la de
+    conceptos, y lo de arriba es prosa. Las columnas salen del encabezado y no de
+    una lista fija, así que una hoja con una columna más la trae. `alias` es la
+    única que se parte, por coma, porque es la única que el formato define como
+    lista. `padre` vacío queda vacío, que es como la hoja escribe una raíz.
+    """
+    lineas = iter(texto.splitlines())
+    columnas: list[str] = []
+    for linea in lineas:
+        if linea.startswith("| id |"):
+            columnas = [c.strip() for c in linea.strip().strip("|").split("|")]
+            next(lineas, None)
+            break
+    entradas: list[dict[str, Any]] = []
+    for linea in lineas:
+        if not linea.startswith("|"):
+            break
+        celdas = [c.strip() for c in linea.strip().strip("|").split("|")]
+        fila: dict[str, Any] = dict(zip(columnas, celdas))
+        if "alias" in fila:
+            fila["alias"] = [a.strip() for a in fila["alias"].split(",") if a.strip()]
+        entradas.append(fila)
+    return entradas
+
+
+def objetivos(regs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Las plagas como dato: la hoja parseada, y en cada concepto las `fichas` que lo cubren.
+
+    Los `id` de la hoja son los que las fichas usan en `targets`, verificado sobre
+    el bundle: los 56 que usan las fichas están todos en la hoja, y los 13 que
+    sobran son los padres de agrupación (`chupadores`, `masticadores`), que ninguna
+    ficha nombra y que son el árbol.
+
+    `fichas` es el join hecho acá y no por el modelo. La primera versión le daba
+    solo el `id` y la viñeta decía que era el mismo de `plagas`; en 3 de 6 corridas
+    de rodenticida el modelo escribió el join mal (el dict de `plagas` contra una
+    lista de ids), obtuvo cero, y en dos de esas cerró con "el catálogo contempla
+    ratas pero ningún producto las cubre". Con la hoja como texto ese cero no
+    existía, porque `grep('rata')` caía en la ficha directo. Un dato que abre un
+    camino nuevo a un falso cero es peor que el texto, así que el camino se cierra
+    acá: la ruta viene en la entrada, y va como ruta porque es lo que `doc=` acota
+    y lo que `FUENTE:` cita.
+
+    Un padre cubre lo que cubren sus hijos, que es la regla de `FORMATO.md` ("una
+    consulta por pulgón alcanza las tres especies") escrita una sola vez.
+    """
+    hoja = vocabulario((BUNDLE / "ontologia" / "objetivos.md").read_text(errors="replace"))
+    hijos: dict[str, list[str]] = {}
+    for e in hoja:
+        hijos.setdefault(e["padre"], []).append(e["id"])
+    directas: dict[str, set[str]] = {}
+    for r in regs:
+        for plaga in r["plagas"]:
+            directas.setdefault(plaga["id"], set()).add(r["ruta"])
+
+    def cubre(id_: str) -> set[str]:
+        rutas = set(directas.get(id_, ()))
+        for hijo in hijos.get(id_, ()):
+            rutas |= cubre(hijo)
+        return rutas
+
+    return [{**e, "fichas": sorted(cubre(e["id"]))} for e in hoja]
+
+
 def nota(regs: list[dict[str, Any]]) -> str:
     """Lo que el preámbulo NO dice sobre el índice, y por qué.
 
@@ -381,7 +473,13 @@ def traza() -> Cell:
 
 
 def armar(
-    texto: str, modelo: Provider, *, ver: bool, plan: bool = False, citas: bool = True
+    texto: str,
+    modelo: Provider,
+    *,
+    ver: bool,
+    plan: bool = False,
+    citas: bool = True,
+    ontologia: bool = False,
 ) -> tuple[Cell, Workspace]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
@@ -412,16 +510,29 @@ def armar(
 
     `traza` va después del planner y no antes: mira los últimos dichos del paso, y
     si corriera primero, el mensaje del plan todavía no existiría.
+
+    `ontologia=True` mete `objetivos` por la misma puerta que `productos` y cambia
+    la primera viñeta del CONTRATO (ver `contrato`). Va apagada porque se midió
+    (filas `ontologia_como_dato` de la bitácora): no mueve aciertos, zompopo cierra
+    en 3 turnos siempre en vez de 5 a 13, y cogollero paga un turno más porque
+    `grep('cogollo')` cae en la ficha directo. La hoja ya es dato para `grep` por
+    estar en el corpus, y la cabecera por documento la distingue de una ficha.
+    Pasa a default el día que un alias que la ficha no escribe lo pida.
     """
     regs = indice()
     verbos = Verbos()
+    extra: dict[str, Any] = {"productos": regs}
+    if ontologia:
+        extra["objetivos"] = objetivos(regs)
+    if plan:
+        extra.update(verbos.builtins)
     ws = recurse(
         texto,
         modelo,
         var="catalogo",
         depth=0,
         budget=60_000,
-        extra={"productos": regs, **verbos.builtins} if plan else {"productos": regs},
+        extra=extra,
         nota="",
     )
     h = Handle(
@@ -440,7 +551,13 @@ def armar(
     return drive(modelo, h, ws, keep_recent=6, max_steps=12, budget=150_000, extras=extras), ws
 
 
-def pedido(pregunta: str, historia: tuple[tuple[str, str], ...], *, plan: bool = False) -> str:
+def pedido(
+    pregunta: str,
+    historia: tuple[tuple[str, str], ...],
+    *,
+    plan: bool = False,
+    ontologia: bool = False,
+) -> str:
     """La pregunta de ahora, con lo ya hablado adentro del MISMO mensaje.
 
     Va todo junto porque `window` conserva `said[0]` y los últimos N, así que el
@@ -456,15 +573,15 @@ def pedido(pregunta: str, historia: tuple[tuple[str, str], ...], *, plan: bool =
     medición de lo que pasa cuando algo así se nombra en el preámbulo, que es 0 de
     12 corridas vivas contra 6 de 12.
     """
-    contrato = CONTRATO
+    texto = contrato(ontologia=ontologia)
     if plan:
-        contrato += f"\n{INSTRUCCIONES}\n\n{render_plan(proyectar(SEMILLA))}\n"
+        texto += f"\n{INSTRUCCIONES}\n\n{render_plan(proyectar(SEMILLA))}\n"
     if not historia:
-        return pregunta + contrato
+        return pregunta + texto
     previas = "\n\n".join(f"P: {p}\nR: {r[:500]}" for p, r in historia)
     return (
         f"[lo que ya hablamos en esta sesión]\n{previas}\n\n"
-        f"[la pregunta de ahora]\n{pregunta}{contrato}"
+        f"[la pregunta de ahora]\n{pregunta}{texto}"
     )
 
 
@@ -533,6 +650,7 @@ async def responder(
     *,
     ver: bool,
     plan: bool = False,
+    ontologia: bool = False,
 ) -> str:
     """Una pregunta, contestada. El Log arranca limpio cada vez.
 
@@ -541,7 +659,8 @@ async def responder(
     disparar en toda la sesión: la pregunta cinco podría contestarse de memoria
     amparada en el grep de la pregunta uno.
     """
-    out = await agente(Log(said=(Message(Role.USER, pedido(pregunta, historia, plan=plan)),)))
+    dicho = pedido(pregunta, historia, plan=plan, ontologia=ontologia)
+    out = await agente(Log(said=(Message(Role.USER, dicho),)))
     if ver:
         for m in out.said:
             quien = {Role.USER: "repl", Role.ASSISTANT: "modelo"}.get(m.role, m.role.value)
@@ -577,23 +696,25 @@ async def main(argv: list[str]) -> None:
     ver = "--ver" in argv
     plan = "--plan" in argv
     citas = "--sin-citas" not in argv
+    ontologia = "--ontologia" in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
 
     texto = corpus()
     fichas = texto.count("=== productos/")
     modelo = proveedor(argv)
-    agente, ws = armar(texto, modelo, ver=ver, plan=plan, citas=citas)
+    agente, ws = armar(texto, modelo, ver=ver, plan=plan, citas=citas, ontologia=ontologia)
     historia: tuple[tuple[str, str], ...] = ()
 
     print(
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
         f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
+        f"{' · con ontología' if ontologia else ''}"
     )
 
     try:
         if pregunta:
-            await responder(agente, ws, pregunta, (), ver=ver, plan=plan)
+            await responder(agente, ws, pregunta, (), ver=ver, plan=plan, ontologia=ontologia)
             return
         print("\033[2mpreguntá, o Ctrl-D para salir\033[0m")
         while True:
@@ -605,7 +726,9 @@ async def main(argv: list[str]) -> None:
                 return
             if not pregunta:
                 continue
-            respuesta = await responder(agente, ws, pregunta, historia, ver=ver, plan=plan)
+            respuesta = await responder(
+                agente, ws, pregunta, historia, ver=ver, plan=plan, ontologia=ontologia
+            )
             historia = (*historia, (pregunta, respuesta))[-3:]
     finally:
         await modelo.aclose()
