@@ -73,6 +73,7 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import pickle
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from multiprocessing.connection import Connection
@@ -225,6 +226,10 @@ class Contenedor:
         self._ctx: SpawnContext = multiprocessing.get_context("spawn")
         self._proc: SpawnProcess | None = None
         self._conn: Connection[Any, Any] | None = None
+        # Nacer y morir pasan por la misma puerta: `cerrar()` llega desde el loop
+        # mientras `_pedir` corre en su hilo, y los dos tocan `_proc`.
+        self._puerta = threading.Lock()
+        self._cerrado = False
         self._lanzar()
 
     @property
@@ -255,6 +260,19 @@ class Contenedor:
             self._conn.close()
         self._proc = self._conn = None
 
+    def _relanzar(self) -> None:
+        """Mata lo que haya y lanza un hijo nuevo, salvo que ya nos hayan cerrado.
+
+        Es lo que hace `_pedir` cuando el hijo tarda o muere, y corre en su hilo.
+        Si `cerrar()` fue el que lo mató, relanzar dejaba un hijo que nadie iba a
+        cerrar; la puerta hace que el hilo espere a que `cerrar()` termine y vea
+        `_cerrado` antes de decidir.
+        """
+        with self._puerta:
+            self._matar()
+            if not self._cerrado:
+                self._lanzar()
+
     async def run(self, code: str) -> Output:
         """Manda el snippet al hijo y espera la respuesta, con tope.
 
@@ -274,24 +292,24 @@ class Contenedor:
 
     def _pedir(self, code: str) -> Output:
         if self._conn is None or not self.vivo:
-            self._matar()
-            self._lanzar()
-        assert self._conn is not None
+            self._relanzar()
         conn = self._conn
+        if conn is None:
+            raise RuntimeError(
+                f"`{self.var}` ya se cerró: un Contenedor cerrado no relanza al hijo"
+            )
         try:
             conn.send(code)
             while True:
                 if not conn.poll(self.timeout):
-                    self._matar()
-                    self._lanzar()
+                    self._relanzar()
                     return Output(err=aviso_timeout(self.timeout, self.var))
                 msg = conn.recv()
                 if isinstance(msg, Output):
                     return msg
                 conn.send(self._atender(_pedido(msg)))
         except (EOFError, OSError) as e:
-            self._matar()
-            self._lanzar()
+            self._relanzar()
             return Output(err=aviso_muerto(f"{type(e).__name__}: {e}", self.var))
 
     def _atender(self, p: Pedido) -> Respuesta:
@@ -312,20 +330,28 @@ class Contenedor:
         return Respuesta(valor=valor)
 
     def cerrar(self) -> None:
-        """Le pide al hijo que termine y, si no lo hace a tiempo, lo mata.
+        """Le pide al hijo que termine y, si no lo hace a tiempo, lo mata. Y no relanza más.
 
         `daemon=True` ya cubre el caso en que nadie llame a esto: el hijo muere
         con el padre. Esto es para no dejar procesos colgando entre tests, ni
         entre casos de un eval.
+
+        Puede llegar con un `run` en vuelo. Un server que le pone timeout a la
+        consulta entera cancela el `await` y cierra, mientras el hilo de `_pedir`
+        sigue esperando el pipe; ese hilo ve morir al hijo y, sin `_cerrado`,
+        relanzaba uno nuevo que nadie iba a cerrar: un proceso huérfano por
+        timeout, reproducido desde agro-api. Después de esto, `run` levanta.
         """
-        if self._conn is not None:
-            try:
-                self._conn.send(None)
-            except OSError:
-                pass
-        if self._proc is not None:
-            self._proc.join(timeout=CORTESIA)
-        self._matar()
+        with self._puerta:
+            self._cerrado = True
+            if self._conn is not None:
+                try:
+                    self._conn.send(None)
+                except OSError:
+                    pass
+            if self._proc is not None:
+                self._proc.join(timeout=CORTESIA)
+            self._matar()
 
 
 def _pedido(x: object) -> Pedido:

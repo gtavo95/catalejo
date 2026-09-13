@@ -1,3 +1,6 @@
+import asyncio
+import multiprocessing
+
 import pytest
 
 from catalejo.core import PlanOp
@@ -175,6 +178,24 @@ class TestContenedor:
         c.cerrar()
 
         assert not c.vivo
+
+    async def test_cerrar_con_un_run_en_vuelo_no_relanza_al_hijo(self) -> None:
+        """Lo que ve un server que cancela la consulta y cierra: el hilo de `_pedir`
+        sigue esperando el pipe, ve morir al hijo, y no tiene que relanzarlo."""
+        c = Contenedor("x")
+        tarea = asyncio.create_task(c.run("while True: pass"))
+        await asyncio.sleep(0.2)
+        tarea.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarea
+
+        c.cerrar()
+        await asyncio.sleep(0.5)  # que el hilo de `_pedir` llegue a donde antes relanzaba
+
+        assert not c.vivo
+        assert multiprocessing.active_children() == []
+        with pytest.raises(RuntimeError, match="ya se cerró"):
+            await c.run("print(1)")
 
     async def test_grep_funciona_adentro_del_hijo(self) -> None:
         c = Contenedor("=== fichas/plagas.md ===\nel pulgon come\notra cosa\nPULGÓN de nuevo")
