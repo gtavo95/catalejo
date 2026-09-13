@@ -59,8 +59,8 @@ def render_handle(h: Handle) -> str:
         lineas.append(f"Contenido: {h.schema}.")
     lineas += [
         "",
-        "Para consultarlo, escribe UN bloque de código Python cercado. Lo ejecuto y te "
-        "devuelvo lo que imprima:",
+        "Para consultarlo, tu turno entero es UN bloque de código Python cercado y nada "
+        "más. Lo ejecuto y te devuelvo lo que imprima:",
         "",
         "```python",
         f"print(len({v}))",

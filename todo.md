@@ -3,7 +3,7 @@
 Ordenados por criticidad, no por costo. Cada uno dice qué es, por qué, y qué lo bloquea.
 Lo que se mide va a `bitacora.tsv`; acá solo vive lo que todavía no se hizo.
 
-## 1. Luna no escribe el bloque en el turno 1, y la línea que lo arregla cuesta +40%
+## 1. Luna no escribe el bloque en el turno 1: la línea que lo arregla va en `main` y cuesta +40%
 
 La falla. Luna cierra el primer turno en prosa: "Voy a consultar la wiki para encontrar el
 precio", `finish_reason=stop`, 4 tokens de razonamiento, ningún bloque. Se comporta como un
@@ -32,8 +32,10 @@ imprime con un caso y n=1) y mirar en cogollero o espartano-mz-trips qué hace e
 turnos extra. Después, una frase que fije la forma del turno de consulta sin pisar la
 terminación, o partir la línea en dos: la forma del bloque en el preámbulo y "prosa cuando
 terminaste" reforzada. Cada frase se prueba primero con los 8 pedidos crudos, que cuesta nada,
-y la suite recién con la que pase 8/8 en la wiki. Hasta entonces la línea está en el árbol sin
-commitear, y en la wiki es la diferencia entre andar y no andar.
+y la suite recién con la que pase 8/8 en la wiki. La línea está commiteada en `main` desde el
+09-13 (decisión, no A/B: en la wiki es la diferencia entre andar y no andar, y el +40% en agro se
+paga mientras no aparezca la frase más barata). La fila `turno_entero` de la bitácora dice "no es
+default por costo" porque se escribió antes de esa decisión.
 
 ## 2. El `Contenedor`: hecho, queda como flag, y lo que le falta
 
