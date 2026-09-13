@@ -13,7 +13,7 @@ import pytest
 from catalejo.core import Fail, Log, Message, Role
 from catalejo.core import Conversation
 from catalejo.llm import Reply
-from catalejo.rlm import Contenedor, Workspace
+from catalejo.rlm import HERRAMIENTAS, HERRAMIENTAS_UN_PASO, Contenedor, Workspace
 from evals import (
     Caso,
     Corrida,
@@ -232,6 +232,25 @@ class TestMontaje:
             assert (await ws.run("print(grep(wiki, 'hola'))")).stdout.startswith("1 línea")
         finally:
             ws.cerrar()
+
+    def test_un_paso_entra_en_los_dos_montajes(self) -> None:
+        assert montaje(["--un-paso"]).tsv == "preguntas.tsv"
+        assert montaje(["--agro", "--un-paso"]).tsv == "agro.tsv"
+
+    async def test_la_wiki_busca_y_lee_por_default(self) -> None:
+        """Es lo que el modelo ve: `grep` dice dónde y `read` existe."""
+        _, ws = wiki("=== a.md ===\nhola", Mudo(), recursivo=False)
+
+        assert ws.tools == HERRAMIENTAS
+        assert (await ws.run("print(grep(wiki, 'hola'))")).stdout == "1 línea casa con 'hola' en a.md.\n"
+        assert (await ws.run("print(read(wiki, 'a'))")).stdout.endswith("\nhola\n")
+
+    async def test_un_paso_es_el_grep_de_antes(self) -> None:
+        """El baseline de `dos_pasos` tiene que seguir existiendo tal cual, para volver a medir."""
+        _, ws = wiki("=== a.md ===\nhola", Mudo(), recursivo=False, dos_pasos=False)
+
+        assert ws.tools == HERRAMIENTAS_UN_PASO
+        assert (await ws.run("print(grep(wiki, 'hola'))")).stdout == "1 línea casa con 'hola' en a.md.\na.md:2: hola\n"
 
     def test_sin_la_bandera_la_wiki_sigue_en_proceso(self) -> None:
         _, ws = wiki("x", Mudo(), recursivo=False)

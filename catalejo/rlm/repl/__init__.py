@@ -11,7 +11,18 @@ revés.
 from .contenedor import Contenedor
 from .environment import Environment, Output, Stub
 from .verbos import INSTRUCCIONES, Verbos
-from .workspace import CABECERA, HERRAMIENTAS, Bridge, Workspace, grep, rutas, sin_acento
+from .workspace import (
+    CABECERA,
+    HERRAMIENTAS,
+    HERRAMIENTAS_UN_PASO,
+    Bridge,
+    Workspace,
+    grep,
+    herramientas,
+    read,
+    rutas,
+    sin_acento,
+)
 
 # Las dos formas de un REPL con contexto adentro. Lo que las distingue es dónde corre el
 # código; lo que comparten es lo que el que las arma necesita: `var`, `tools`, `bridge`,
@@ -21,6 +32,7 @@ Repl = Workspace | Contenedor
 __all__ = [
     "CABECERA",
     "HERRAMIENTAS",
+    "HERRAMIENTAS_UN_PASO",
     "INSTRUCCIONES",
     "Bridge",
     "Contenedor",
@@ -31,6 +43,8 @@ __all__ = [
     "Verbos",
     "Workspace",
     "grep",
+    "herramientas",
+    "read",
     "rutas",
     "sin_acento",
 ]

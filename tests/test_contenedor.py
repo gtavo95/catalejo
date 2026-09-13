@@ -153,6 +153,21 @@ class TestContenedor:
         finally:
             c.cerrar()
 
+    async def test_dos_pasos_cruza_al_hijo(self) -> None:
+        """El hijo arma su Workspace con el mismo default: el `grep` que solo dice
+        dónde, y `read`. La nota se calcula acá, sin preguntarle."""
+        texto = "=== a.md ===\nprecio 1\n=== b.md ===\nprecio 2"
+        c = Contenedor(texto)
+        try:
+            donde = await c.run("print(grep(ctx, 'precio'))")
+            ficha = await c.run("print(read(ctx, 'b'))")
+
+            assert donde.stdout == "2 líneas casan con 'precio' en 2 documentos: a.md (1), b.md (1).\n"
+            assert ficha.stdout == "b.md: 1 línea, de la 4 a la 4.\nprecio 2\n"
+            assert c.tools == HERRAMIENTAS
+        finally:
+            c.cerrar()
+
     async def test_cerrar_termina_el_proceso(self) -> None:
         c = Contenedor("x")
         assert c.vivo
@@ -164,7 +179,7 @@ class TestContenedor:
     async def test_grep_funciona_adentro_del_hijo(self) -> None:
         c = Contenedor("=== fichas/plagas.md ===\nel pulgon come\notra cosa\nPULGÓN de nuevo")
         try:
-            out = await c.run("print(grep(ctx, 'pulgon'))")
+            out = await c.run("print(grep(ctx, 'pulgon', doc='plagas'))")
 
             assert out.stdout.startswith("2 líneas casan con 'pulgon' en fichas/plagas.md.")
             assert "fichas/plagas.md:2: el pulgon come" in out.stdout

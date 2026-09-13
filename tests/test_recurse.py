@@ -5,7 +5,7 @@ import pytest
 
 from catalejo.core import ZERO, Conversation, Fail, Log, Message, Role, Status, loop, then
 from catalejo.llm import Gemini, Reply
-from catalejo.rlm import Bridge, Handle, answer, executor, note, recurse, worker
+from catalejo.rlm import HERRAMIENTAS, Bridge, Handle, answer, executor, note, recurse, worker
 
 COSTO = 10
 
@@ -153,6 +153,38 @@ class TestEnUnProcesoHijo:
         ws.cerrar()
 
         assert (await ws.run("print(1)")).stdout == "1\n"
+
+
+class TestEnDosPasos:
+    """El default baja a los sub-agentes: el hijo busca y lee igual que la raíz."""
+
+    async def test_la_raiz_busca_en_dos_pasos_y_la_nota_lo_dice(self) -> None:
+        ws = recurse("=== a.md ===\nprecio 1\n=== b.md ===\nprecio 2", Router())
+
+        out = await ws.run("print(grep(ctx, 'precio')); print(read(ctx, 'a'))")
+
+        assert out.stdout.splitlines() == [
+            "2 líneas casan con 'precio' en 2 documentos: a.md (1), b.md (1).",
+            "a.md: 1 línea, de la 2 a la 2.",
+            "precio 1",
+        ]
+        assert ws.tools.startswith(HERRAMIENTAS)
+        assert "llm(" in ws.tools
+
+    async def test_el_sub_agente_hereda_la_palanca(self) -> None:
+        model = Router(
+            ("nivel dos", bloque("print(grep(ctx, 'precio'))")),
+            ("[repl]", "hay precio en a y en b"),
+        )
+        ws = recurse("payload", model, depth=1)
+
+        out = await ws.run("print(rlm('nivel dos', '=== a.md ===\\nprecio 1\\n=== b.md ===\\nprecio 2'))")
+
+        assert out.stdout == "hay precio en a y en b\n"
+        hijo = next(c for c in model.visto if "[repl]" in c[-1].text)
+        assert "a.md (1), b.md (1)." in hijo[-1].text
+        assert ":2: precio 1" not in hijo[-1].text
+        assert HERRAMIENTAS in hijo[0].text
 
 
 class TestLlm:

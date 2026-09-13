@@ -26,6 +26,7 @@ from .drive import drive
 from .recurse import Metered, answer, note, recurse
 from .repl import (
     HERRAMIENTAS,
+    HERRAMIENTAS_UN_PASO,
     INSTRUCCIONES,
     Bridge,
     Contenedor,
@@ -36,11 +37,13 @@ from .repl import (
     Verbos,
     Workspace,
     grep,
+    read,
     rutas,
 )
 
 __all__ = [
     "HERRAMIENTAS",
+    "HERRAMIENTAS_UN_PASO",
     "INSTRUCCIONES",
     "Bridge",
     "Contenedor",
@@ -60,6 +63,7 @@ __all__ = [
     "executor",
     "extract_code",
     "grep",
+    "read",
     "grounded",
     "inventada",
     "note",

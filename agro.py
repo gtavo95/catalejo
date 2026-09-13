@@ -8,6 +8,7 @@
     uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
     uv run agro.py --ontologia "..."     además, `objetivos` como dato en el REPL
     uv run agro.py --contenedor "..."    el REPL en un proceso hijo que se mata si tarda
+    uv run agro.py --un-paso "..."       el grep de antes, que muestra las líneas, sin `read`
 
 El corpus son las 39 fichas de producto y la ontología de `successo-okf`: 360 KB,
 ~90k tokens. Cada ficha trae un bloque `# Agronomía` en JSON con los cultivos
@@ -482,6 +483,7 @@ def armar(
     citas: bool = True,
     ontologia: bool = False,
     contenedor: bool = False,
+    dos_pasos: bool = True,
 ) -> tuple[Cell, Repl]:
     """El agente y su workspace, que sobreviven a toda la sesión.
 
@@ -524,6 +526,16 @@ def armar(
     `contenedor=True` corre el código del modelo en un proceso hijo que se mata
     si tarda; `llm` y el índice siguen acá. Lo que el modelo ve no cambia. El que
     llama cierra el workspace al terminar, porque un proceso no se va solo.
+
+    `dos_pasos` va por default: el `grep` que solo dice dónde y el `read` que trae
+    la ficha entera, como hace una persona con una carpeta: buscar, elegir, abrir.
+    Cambia la nota de herramientas y nada más del prompt; el CONTRATO sigue
+    diciendo "andá al texto con grep", que ahora son dos consultas. Se midió
+    (filas `dos_pasos` de la bitácora): 8/9 estables en los dos arms, +4% tokens
+    que es ruido, 4.6 a 5.1 turnos. Es default porque la respuesta sale de la
+    ficha entera, con la equivalencia por manzana y la seguridad adentro, y eso
+    es lo que el que atiende necesita aunque `acierta()` no lo mida.
+    `dos_pasos=False` (`--un-paso`) restaura el arm anterior.
     """
     regs = indice()
     verbos = Verbos()
@@ -541,6 +553,7 @@ def armar(
         extra=extra,
         nota="",
         contenedor=contenedor,
+        dos_pasos=dos_pasos,
     )
     h = Handle(
         var=ws.var,
@@ -705,6 +718,7 @@ async def main(argv: list[str]) -> None:
     citas = "--sin-citas" not in argv
     ontologia = "--ontologia" in argv
     contenedor = "--contenedor" in argv
+    dos_pasos = "--un-paso" not in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
 
     texto = corpus()
@@ -718,6 +732,7 @@ async def main(argv: list[str]) -> None:
         citas=citas,
         ontologia=ontologia,
         contenedor=contenedor,
+        dos_pasos=dos_pasos,
     )
     historia: tuple[tuple[str, str], ...] = ()
 
@@ -727,6 +742,7 @@ async def main(argv: list[str]) -> None:
         f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
         f"{' · con ontología' if ontologia else ''}"
         f"{' · en un proceso hijo' if contenedor else ''}"
+        f"{' · en un paso' if not dos_pasos else ''}"
     )
 
     try:

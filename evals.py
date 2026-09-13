@@ -6,6 +6,8 @@
     uv run evals.py --recurse       las 20, con `llm` disponible
     uv run evals.py --contenedor    las 20, con el REPL en un proceso hijo que se mata si tarda
     uv run evals.py --agro --contenedor  las agronómicas, con el REPL en un proceso hijo
+    uv run evals.py --un-paso       las 20, con el grep de antes que muestra líneas, sin `read`
+    uv run evals.py --agro --un-paso     las agronómicas, en un paso (el baseline de `dos_pasos`)
     uv run evals.py --repeats=3     cada caso tres veces, para ver cuál flipa
     uv run evals.py --agro          las preguntas agronómicas, contra el agente de agro.py
     uv run evals.py --agro --plan   las mismas, con la checklist prendida
@@ -149,21 +151,38 @@ ESQUEMA = (
 
 
 def wiki(
-    texto: str, modelo: Provider, *, recursivo: bool, contenedor: bool = False
+    texto: str,
+    modelo: Provider,
+    *,
+    recursivo: bool,
+    contenedor: bool = False,
+    dos_pasos: bool = True,
 ) -> tuple[Cell, Repl]:
     """El agente de la wiki: el REPL sobre el bundle entero y el contrato de cita.
 
     `contenedor` corre el código del modelo en un proceso hijo. Lo que el modelo
     ve no cambia, porque `var` y `tools` son los mismos; lo único que puede
     aparecer distinto es un `[repl]` diciendo que el snippet se mató por tardar.
+
+    `dos_pasos` sí cambia lo que ve, y va por default: `grep` sin `doc=` dice solo
+    dónde, y `read` trae la página entera. `--un-paso` lo apaga, y es el baseline
+    de la fila `dos_pasos` de la bitácora.
     """
     ws: Repl
     if recursivo:
-        ws = recurse(texto, modelo, var="wiki", depth=0, budget=60_000, contenedor=contenedor)
+        ws = recurse(
+            texto,
+            modelo,
+            var="wiki",
+            depth=0,
+            budget=60_000,
+            contenedor=contenedor,
+            dos_pasos=dos_pasos,
+        )
     elif contenedor:
-        ws = Contenedor(texto, var="wiki")
+        ws = Contenedor(texto, var="wiki", dos_pasos=dos_pasos)
     else:
-        ws = Workspace(texto, var="wiki")
+        ws = Workspace(texto, var="wiki", dos_pasos=dos_pasos)
     h = Handle(
         var="wiki",
         schema=ESQUEMA,
@@ -198,9 +217,11 @@ def montaje(argv: list[str]) -> Montaje:
     agente.
 
     `--contenedor` es lo contrario: el mismo arm con otro motor abajo, y entra
-    en los dos montajes.
+    en los dos montajes. `--un-paso` también entra en los dos, y ese sí es otro
+    arm: cambia lo que `grep` devuelve y lo que la nota de herramientas dice.
     """
     contenedor = "--contenedor" in argv
+    dos_pasos = "--un-paso" not in argv
     if "--agro" in argv:
         plan = "--plan" in argv
         citas = "--sin-citas" not in argv
@@ -216,6 +237,7 @@ def montaje(argv: list[str]) -> Montaje:
                 citas=citas,
                 ontologia=ontologia,
                 contenedor=contenedor,
+                dos_pasos=dos_pasos,
             ),
             pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan, ontologia=ontologia),
         )
@@ -224,7 +246,7 @@ def montaje(argv: list[str]) -> Montaje:
         tsv="preguntas.tsv",
         corpus=corpus,
         montar=lambda texto, modelo: wiki(
-            texto, modelo, recursivo=recursivo, contenedor=contenedor
+            texto, modelo, recursivo=recursivo, contenedor=contenedor, dos_pasos=dos_pasos
         ),
         pedir=lambda pregunta: pregunta + CITA,
     )

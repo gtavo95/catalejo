@@ -80,7 +80,7 @@ from multiprocessing.context import SpawnContext, SpawnProcess
 from typing import Any
 
 from .environment import Output
-from .workspace import HERRAMIENTAS, Bridge, Workspace
+from .workspace import Bridge, Workspace, herramientas
 
 TIMEOUT = 30.0
 
@@ -148,6 +148,7 @@ def _servir(
     var: str,
     datos: dict[str, object],
     remotos: tuple[str, ...],
+    dos_pasos: bool,
 ) -> None:
     """El lado del hijo: un Workspace y un loop que atiende snippets hasta el `None`.
 
@@ -155,7 +156,7 @@ def _servir(
     por nombre. Llama a `correr`, no a `run`: acá no hay event loop que proteger.
     """
     stubs = {nombre: _stub(conn, nombre) for nombre in remotos}
-    ws = Workspace(payload, var=var, extra={**datos, **stubs})
+    ws = Workspace(payload, var=var, extra={**datos, **stubs}, dos_pasos=dos_pasos)
     try:
         while True:
             code = conn.recv()
@@ -210,11 +211,13 @@ class Contenedor:
         extra: Mapping[str, object] | None = None,
         note: str = "",
         bridge: Bridge | None = None,
+        dos_pasos: bool = True,
         timeout: float = TIMEOUT,
     ) -> None:
         self.var = var
         self.note = note
         self.bridge = bridge
+        self.dos_pasos = dos_pasos
         self.timeout = timeout
         self._payload = payload
         self._datos, self._remotos = _repartir(extra or {})
@@ -226,7 +229,8 @@ class Contenedor:
 
     @property
     def tools(self) -> str:
-        return f"{HERRAMIENTAS}\n\n{self.note}" if self.note else HERRAMIENTAS
+        base = herramientas(self.dos_pasos)
+        return f"{base}\n\n{self.note}" if self.note else base
 
     @property
     def vivo(self) -> bool:
@@ -236,7 +240,7 @@ class Contenedor:
         padre, hijo = self._ctx.Pipe()
         proc = self._ctx.Process(
             target=_servir,
-            args=(hijo, self._payload, self.var, self._datos, tuple(self._remotos)),
+            args=(hijo, self._payload, self.var, self._datos, tuple(self._remotos), self.dos_pasos),
             daemon=True,
         )
         proc.start()

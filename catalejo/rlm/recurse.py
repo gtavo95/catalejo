@@ -177,6 +177,7 @@ def recurse(
     extra: Mapping[str, object] | None = None,
     nota: str = "",
     contenedor: bool = False,
+    dos_pasos: bool = True,
 ) -> Repl:
     """Un `Workspace` que además sabe delegar en otro modelo.
 
@@ -228,6 +229,11 @@ def recurse(
     hijo, y baja a los sub-agentes: si la raíz está aislada, los hijos también.
     Lo que el modelo ve es lo mismo en los dos casos. El que lo arma tiene que
     llamar `cerrar()` al terminar, porque un proceso no se va solo.
+
+    `dos_pasos` es el del `Workspace`, default incluido, y también baja a los
+    sub-agentes: `grep` sin `doc=` dice solo dónde, y `read` trae el documento.
+    Un hijo que recibe un trozo sin cabeceras no nota la diferencia, porque ahí
+    `grep` muestra las líneas igual.
     """
     bridge = Bridge(budget=budget)
     return _armar(
@@ -241,6 +247,7 @@ def recurse(
         extra=extra,
         nota=nota,
         contenedor=contenedor,
+        dos_pasos=dos_pasos,
     )
 
 
@@ -256,9 +263,16 @@ def _armar(
     extra: Mapping[str, object] | None = None,
     nota: str = "",
     contenedor: bool = False,
+    dos_pasos: bool = True,
 ) -> Repl:
     builtins = _builtins(
-        model, bridge, depth=depth, max_steps=max_steps, paralelo=paralelo, contenedor=contenedor
+        model,
+        bridge,
+        depth=depth,
+        max_steps=max_steps,
+        paralelo=paralelo,
+        contenedor=contenedor,
+        dos_pasos=dos_pasos,
     )
     forma = Contenedor if contenedor else Workspace
     return forma(
@@ -267,6 +281,7 @@ def _armar(
         extra={**builtins, **(extra or {})},
         note=f"{note(depth)}\n\n{nota}" if nota else note(depth),
         bridge=bridge,
+        dos_pasos=dos_pasos,
     )
 
 
@@ -278,6 +293,7 @@ def _builtins(
     max_steps: int,
     paralelo: int,
     contenedor: bool,
+    dos_pasos: bool,
 ) -> dict[str, object]:
     sem = asyncio.Semaphore(paralelo)
 
@@ -306,6 +322,7 @@ def _builtins(
             max_steps=max_steps,
             paralelo=paralelo,
             contenedor=contenedor,
+            dos_pasos=dos_pasos,
         )
         handle = Handle(var=hijo.var, size=f"{len(texto):,} caracteres", tools=hijo.tools)
         agente = loop(

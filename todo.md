@@ -3,7 +3,39 @@
 Ordenados por criticidad, no por costo. Cada uno dice qué es, por qué, y qué lo bloquea.
 Lo que se mide va a `bitacora.tsv`; acá solo vive lo que todavía no se hizo.
 
-## 1. El `Contenedor`: hecho, queda como flag, y lo que le falta
+## 1. Luna no escribe el bloque en el turno 1, y la línea que lo arregla cuesta +40%
+
+La falla. Luna cierra el primer turno en prosa: "Voy a consultar la wiki para encontrar el
+precio", `finish_reason=stop`, 4 tokens de razonamiento, ningún bloque. Se comporta como un
+modelo de tool-calling que espera emitir una llamada y no tiene ninguna declarada. Medido con 8
+pedidos idénticos al primer turno, JSON crudo (filas `turno_es_bloque`): en la wiki 0 de 8
+escriben código, en agro 5 de 8. En la suite agronómica son 8 a 11 `[grounding]` de cada 27
+corridas, y `grounded` lo rescata; en la wiki no hay rescate y hoy no anda con luna.
+
+Lo que no lo mueve: `reasoning_effort=medium` (0/8). Un sufijo en el turno del usuario lo
+empeora, ahí dice con todas las letras "no tengo la herramienta de ejecución".
+
+Lo que lo mueve: la línea del preámbulo. "Para consultarlo, escribe UN bloque de código Python
+cercado" pasa a "tu turno entero es UN bloque de código Python cercado y nada más", y el primer
+turno va de 0/8 a 8/8 en la wiki y de 5/8 a 7/8 en agro. De las frases probadas es la única
+que trabaja: "No hay otra herramienta: el bloque ES la consulta" 0/8, "en el siguiente turno"
+2/8, "sin prosa antes: el turno de consulta es el bloque" 4/8.
+
+El costo, en la suite a n=3 con los dos arms seguidos: `[grounding]` 11 a 0, 9/9 en los dos,
+pero +40% tokens (13.4k a 18.8k), 6.3 a 6.9 turnos, 60 a 80 consultas. No es un flake: tres
+casos se van de 2 a 3× en las tres vueltas y dos bajan a la mitad. La hipótesis es que "y nada
+más" choca con el contrato de terminación (prosa = terminé) y el modelo explora de más antes de
+animarse a la prosa. Sin transcripciones de la suite no se confirma.
+
+Qué sigue. Primero guardar las transcripciones de una corrida de la suite (evals solo las
+imprime con un caso y n=1) y mirar en cogollero o espartano-mz-trips qué hace el modelo con los
+turnos extra. Después, una frase que fije la forma del turno de consulta sin pisar la
+terminación, o partir la línea en dos: la forma del bloque en el preámbulo y "prosa cuando
+terminaste" reforzada. Cada frase se prueba primero con los 8 pedidos crudos, que cuesta nada,
+y la suite recién con la que pase 8/8 en la wiki. Hasta entonces la línea está en el árbol sin
+commitear, y en la wiki es la diferencia entre andar y no andar.
+
+## 2. El `Contenedor`: hecho, queda como flag, y lo que le falta
 
 Las dos fases están. El código del modelo corre en un proceso hijo con `spawn` que se mata y
 relanza si tarda, y `llm`, `rlm` y `add_step` se quedan en el padre: el hijo recibe un stub con
@@ -28,15 +60,9 @@ es lo que haría que `paralelo` y `depth` se puedan subir juntos. El hijo tiene 
 
 Regla de diseño que no se negocia: el cliente MCP vive en el PADRE. El hijo es el lado no
 confiable y darle red reabre todo lo que el proceso cierra. Y lo que el proceso NO arregla es la
-inyección; para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 3.
+inyección; para las rutas citadas ya está `citas.py`, y para la plaga en prosa es el punto 4.
 
-Aparte, y sin dueño todavía: luna en la wiki (sin `--agro`) se niega a escribir código. En 4 de 6
-corridas de `karbo-precio` y 4 de 6 de `glifosato`, con y sin `--contenedor`, contesta "no tengo
-disponible el bloque de ejecución" y `[grounding]` la empuja una vez sin efecto. La wiki con luna
-nunca se había corrido (el control del 09-10 era anterior al commit de luna), así que no es una
-regresión: es el preámbulo pelado de la wiki contra ese proveedor.
-
-## 2. El grep que afloja el patrón cuando devuelve cero (rebajado, y el 3 lo confirmó)
+## 3. El grep que afloja el patrón cuando devuelve cero (rebajado, y el 4 lo confirmó)
 
 El cero es el estado donde el modelo tiene menos información y más incentivo a rellenar, y es
 exactamente donde se inventó las tres fichas. Hoy `grep` dice "0 líneas casan" y lo suelta ahí.
@@ -49,11 +75,11 @@ no tiene esa plaga."
 
 Rebajado porque en un corpus con ontología, que es el caso principal, `ontologia/objetivos.md`
 está adentro del texto y la cabecera por documento distingue un hit ahí de uno en una ficha. El
-A/B del punto 3 lo midió: con la hoja como texto el modelo baja de `masticadores` al hijo y de ahí
+A/B del punto 4 lo midió: con la hoja como texto el modelo baja de `masticadores` al hijo y de ahí
 a la ficha en 1 a 3 consultas, sin que nadie le dé el árbol. Vuelve si un corpus sin ontología lo
 pide.
 
-## 3. La ontología como dato: medido, queda como flag
+## 4. La ontología como dato: medido, queda como flag
 
 Lo que se probó (`--ontologia`, filas `ontologia_como_dato` de la bitácora): `objetivos` en el
 REPL, la tabla de `ontologia/objetivos.md` parseada con `id`, `etiqueta`, `padre`, `alias`, `nota`
@@ -80,19 +106,39 @@ Lo que sigue sin tocarse: la prosa. Una respuesta a "¿qué uso para el zompopo?
 es un string. Un chequeo determinístico de nombres en prosa contra `ontologia/` no está bien
 definido.
 
-## 4. El two-phase para rescatar el `doc=`
+## 5. Grep en dos pasos: default desde el 09-13, `--un-paso` es el arm de antes
 
-El arm `con_doc` ganó -58% en tokens y perdió calidad: tres casos de 3/3 a 2/3, tres formas
-distintas, todas sin consultar el contexto. El gate lo bloquea. Desbloquearlo pide n=6 en los DOS
-arms, no solo en el nuevo, y eso es plata.
+Lo que hay. `grep` sin `doc=` devuelve solo la primera línea, la que dice en qué documentos y
+cuántas líneas en cada uno, y `read(texto, 'parte de la ruta')` trae el documento entero sin
+numerar, sin tope, con el rango de líneas adelante. Con `doc=` grep sigue mostrando las líneas.
+Es lo que hace la búsqueda de Codex y lo que hace una persona con una carpeta: buscar, elegir
+qué abrir, leer. Es el default del `Workspace`, baja a los sub-agentes y cruza al `Contenedor`;
+`dos_pasos=False` (`--un-paso` en `agro.py` y en los dos montajes de `evals.py`) restaura el
+`grep` de antes, sin `read`, para volver a medir. Lo único del prompt que cambia es la nota de
+herramientas: `HERRAMIENTAS` es la de dos pasos y `HERRAMIENTAS_UN_PASO` la vieja.
 
-La alternativa es no re-medir lo mismo sino cambiar el diseño: Codex CLI devuelve solo nombres de
-archivo y obliga a un `read` aparte, así que no hay contenido que contestar sin pedirlo. Es un arm
-nuevo y arranca de cero en n. Ojo con el mecanismo: la falla fue hacer DE MENOS (4.2 turnos contra
-5.7), y two-phase fuerza más llamadas, lo cual es plausible como cura y también se come parte del
-ahorro.
+Lo que salió (filas `dos_pasos` de la bitácora, n=3, los dos arms seguidos): 8/9 estables en los
+dos, 26/27 vivas contra 25/27, el mismo caso flipa en los dos (viventem, una corrida de 3k tokens
+sin consultar), +4% tokens que es ruido, turnos 4.6 a 5.1, consultas 42 a 48. El modelo lee de
+verdad: 15 `read` en 27 corridas. Por caso no es parejo, cogollero y espartano-mz-trips pagan la
+ficha entera (+20 a 40%) y espartano-agua-ph y zompopo bajan a la mitad porque una lectura
+reemplaza varias consultas de 50 líneas. Y el hallazgo colateral: en el baseline el modelo casi no
+usa `grep`, 36 de 42 consultas empiezan por `productos`, así que la palanca se ejerció en la
+minoría de consultas que van al texto.
 
-## 5. `max_hits=50`, nunca medido
+Por qué es default con un empate: lo que `acierta()` no mide. En el humo de cogollero la respuesta
+con `read` trajo la equivalencia por manzana y el bloque de seguridad enteros, que salen de leer la
+ficha y no de una línea, y esa completitud es lo que el que atiende necesita. Decisión del 09-13,
+no del A/B: en los números no gana ni pierde. Y `read` no tiene tope a propósito: un tope que corta
+la ficha en la línea 400 devuelve el problema que esto vino a sacar, un dato sin su contexto. En
+este corpus ninguna ficha pasa de 286 líneas; un corpus de documentos de miles de líneas paga esos
+tokens o usa `grep(doc=)`.
+
+Lo que falta: la vara de completitud, para que el próximo A/B sobre esto no dependa de leer
+transcripciones a mano. La explicación con el diagrama está en
+https://claude.ai/code/artifact/66e9afbe-ba24-4442-a0e7-820cf591cc71.
+
+## 6. `max_hits=50`, nunca medido
 
 Entre 1.229 y 3.079 tokens por llamada sobre el bundle, contra una corrida entera que promedia
 7.788. Es el default más caro sin A/B. Bajarlo a 20 es una palanca de una palabra y la red ya está
@@ -110,4 +156,4 @@ y aciertos.
 - **El tope por ancho de línea** que tienen opencode y Cursor: medido, p99 del bundle son 418
   caracteres y ninguna línea pasa de 2.000. Ahorraría 10%. No vale el código.
 - **Un motor de regex lineal en Python**: `rure` está abandonado. La única opción mantenida era el
-  paquete `regex` con `timeout=`, y se descartó porque el cuelgue ya tiene dueño en el punto 1.
+  paquete `regex` con `timeout=`, y se descartó porque el cuelgue ya tiene dueño en el punto 2.

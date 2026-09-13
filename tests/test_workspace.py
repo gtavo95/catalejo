@@ -1,6 +1,6 @@
 import asyncio
 
-from catalejo.rlm import Workspace, grep
+from catalejo.rlm import HERRAMIENTAS, HERRAMIENTAS_UN_PASO, Workspace, grep, read
 from catalejo.rlm.repl.workspace import MAX_PLEGADOS, _PLEGADOS
 
 
@@ -356,6 +356,145 @@ class TestCabeceraPorDocumento:
 
     def test_sin_documentos_no_cambia_nada(self) -> None:
         assert grep("uno\ndos precio", "precio") == "1 línea casa con 'precio'.\n2: dos precio"
+
+
+class TestDosPasos:
+    """Buscar dice dónde; leer trae el documento. Como una persona con una carpeta."""
+
+    CATALOGO = (
+        "=== productos/viventem.md ===\n"
+        "DOSIS: 1.0 L/Ha\n"
+        "pH del agua 5.5\n"
+        "=== productos/segador.md ===\n"
+        "DOSIS: 0.5 L/Mz\n"
+        "=== productos/segador-plus.md ===\n"
+        "DOSIS: 0.7 L/Mz\n"
+    )
+
+    def test_grep_dice_donde_y_no_muestra_las_lineas(self) -> None:
+        """La falla que esto hace imposible: contestar desde una línea suelta del grep,
+        sin haber abierto la ficha. En el catálogo la línea 5157 de novermo trae
+        "gusano cogollero. 1.4 L/ha" con el cultivo en la anterior y la tabla por
+        manzana en la 5286."""
+        out = grep(self.CATALOGO, "DOSIS", mostrar=False)
+
+        assert out == (
+            "3 líneas casan con 'DOSIS' en 3 documentos: productos/viventem.md (1), "
+            "productos/segador.md (1), productos/segador-plus.md (1)."
+        )
+
+    def test_con_doc_si_muestra_las_lineas(self) -> None:
+        """Nombrar el documento es lo que abre la puerta, igual que `read`."""
+        out = grep(self.CATALOGO, "DOSIS", doc="viventem", mostrar=False)
+
+        assert out.splitlines() == [
+            "1 línea casa con 'DOSIS' en productos/viventem.md.",
+            "productos/viventem.md:2: DOSIS: 1.0 L/Ha",
+        ]
+
+    def test_sin_documentos_muestra_las_lineas(self) -> None:
+        """Un trozo sin cabeceras no tiene nombres con los cuales pedir nada."""
+        out = grep("uno\ndos precio", "precio", mostrar=False)
+
+        assert out == "1 línea casa con 'precio'.\n2: dos precio"
+
+    def test_las_lineas_fuera_de_todo_documento_se_muestran_igual(self) -> None:
+        out = grep("precio suelto\n=== a.md ===\nprecio adentro", "precio", mostrar=False)
+
+        assert out == "2 líneas casan con 'precio' en a.md.\n1: precio suelto"
+
+    def test_read_trae_el_documento_entero_sin_numerar(self) -> None:
+        """Sin prefijo por línea: una ficha mediana son 181 líneas y el número no se
+        usa al contestar. El rango va en la primera línea."""
+        out = read(self.CATALOGO, "viventem")
+
+        assert out == (
+            "productos/viventem.md: 2 líneas, de la 2 a la 3.\nDOSIS: 1.0 L/Ha\npH del agua 5.5"
+        )
+
+    def test_los_numeros_son_los_de_grep(self) -> None:
+        """El rango de `read` y el prefijo de un hit hablan de la misma línea."""
+        hit = grep(self.CATALOGO, "pH", doc="viventem").splitlines()[-1]
+
+        assert hit.startswith("productos/viventem.md:3:")
+        assert read(self.CATALOGO, "viventem").startswith("productos/viventem.md: 2 líneas, de la 2 a la 3.")
+
+    def test_la_ruta_entera_gana_sobre_las_que_la_contienen(self) -> None:
+        out = read(self.CATALOGO, "productos/segador.md")
+
+        assert out == "productos/segador.md: 1 línea, de la 5 a la 5.\nDOSIS: 0.5 L/Mz"
+
+    def test_varias_rutas_casan_y_pide_elegir(self) -> None:
+        """Dos fichas juntas son el doble de tokens sin que nadie las haya pedido."""
+        out = read(self.CATALOGO, "segador")
+
+        assert out == (
+            "2 documentos casan con 'segador': productos/segador.md, productos/segador-plus.md. "
+            "Elige uno escribiendo más de la ruta."
+        )
+
+    def test_ninguna_ruta_casa_no_es_un_documento_vacio(self) -> None:
+        out = read(self.CATALOGO, "royano")
+
+        assert out.startswith("ningún documento casa con 'royano'")
+        assert "grep(texto, patron)" in out
+
+    def test_sin_documentos_no_hay_nada_que_leer(self) -> None:
+        assert read("hola", "x").startswith("el texto no trae documentos")
+
+    def test_un_documento_vacio_lo_dice(self) -> None:
+        assert read("=== a.md ===\n=== b.md ===\nx", "a") == "a.md está vacío: la cabecera y nada más."
+
+    def test_pliega_la_ruta_como_grep(self) -> None:
+        assert read("=== fichas/Pulgón.md ===\nnada", "pulgon").endswith("\nnada")
+
+    def test_no_hay_tope(self) -> None:
+        """Un tope devolvería el problema que `read` vino a sacar: un dato sin su
+        contexto, ahora con la forma de una ficha entera. Es entero o nada."""
+        texto = "=== a.md ===\n" + "\n".join(f"linea {i}" for i in range(1, 2001))
+
+        out = read(texto, "a")
+
+        assert out.splitlines()[0] == "a.md: 2000 líneas, de la 2 a la 2001."
+        assert len(out.splitlines()) == 2001
+        assert out.splitlines()[-1] == "linea 2000"
+
+
+class TestWorkspaceEnDosPasos:
+    """Es el default desde el 2026-09-13 (filas `dos_pasos` de la bitácora)."""
+
+    CATALOGO = TestDosPasos.CATALOGO
+
+    async def test_por_default_el_grep_solo_dice_donde_y_read_esta(self) -> None:
+        ws = Workspace(self.CATALOGO)
+
+        donde = await ws.run("print(grep(ctx, 'DOSIS'))")
+        ficha = await ws.run("print(read(ctx, 'viventem'))")
+
+        assert len(donde.stdout.splitlines()) == 1
+        assert ficha.stdout.splitlines()[1:] == ["DOSIS: 1.0 L/Ha", "pH del agua 5.5"]
+        assert ws.tools == HERRAMIENTAS
+
+    async def test_el_modelo_no_puede_pedir_las_lineas_por_argumento(self) -> None:
+        """Si se pudiera, el modo sería una sugerencia."""
+        ws = Workspace(self.CATALOGO)
+
+        out = await ws.run("print(grep(ctx, 'DOSIS', mostrar=True))")
+
+        assert out.err.startswith("TypeError")
+        assert "mostrar" in out.err
+
+    async def test_con_un_paso_vuelve_el_grep_de_antes(self) -> None:
+        """El arm que apaga la palanca tiene que dar exactamente lo de antes, o las
+        filas viejas de la bitácora mienten."""
+        ws = Workspace(self.CATALOGO, dos_pasos=False)
+
+        donde = await ws.run("print(grep(ctx, 'DOSIS'))")
+        ficha = await ws.run("read(ctx, 'viventem')")
+
+        assert len(donde.stdout.splitlines()) == 4
+        assert ficha.err == "NameError: name 'read' is not defined"
+        assert ws.tools == HERRAMIENTAS_UN_PASO
 
 
 class TestPlegadoGuardado:

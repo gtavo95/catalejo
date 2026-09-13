@@ -82,7 +82,7 @@ MAX_HITS = 50
 
 CABECERA = re.compile(r"^=== (.+) ===$")
 
-HERRAMIENTAS = (
+HERRAMIENTAS_UN_PASO = (
     "Es Python real con los builtins recortados: no hay `import`, `open` ni `eval`. "
     "Tienes `grep(texto, patron)` para expresiones regulares: devuelve las líneas que "
     "casan, numeradas, y la primera línea dice el total y, si el texto trae documentos, "
@@ -100,6 +100,36 @@ HERRAMIENTAS = (
     "el documento sin sumarlo al total. "
     "El resto de Python funciona normal: rebanar, `len`, comprensiones, `sorted`."
 )
+
+HERRAMIENTAS = (
+    "Es Python real con los builtins recortados: no hay `import`, `open` ni `eval`. "
+    "El texto trae documentos separados por una línea `=== ruta ===`, y consultarlo son "
+    "dos pasos, como buscar en una carpeta y después abrir el archivo. Primero "
+    "`grep(texto, patron)` te dice cuántas líneas casan y en qué documentos, cuántas en "
+    "cada uno, sin mostrar las líneas. Después `read(texto, 'parte de la ruta')` te "
+    "devuelve ese documento entero, tal cual, para que leas el dato con todo lo que lo "
+    "rodea. Si solo quieres las líneas que casan dentro de un documento, "
+    "`grep(texto, patron, doc='parte de la ruta')`, y cada una sale como "
+    "`ruta:linea: contenido`. Lo que vale es lo que dice el documento; el resumen de "
+    "`grep` sirve para elegir qué leer, no para contestar. `patron` es una expresión "
+    "regular. No distingue mayúsculas ni acentos, así que `pulgon` encuentra `Pulgón` y "
+    "`arana` encuentra `araña`; cuando el caso importe, `grep(texto, patron, exacto=True)`. "
+    "La línea `=== ruta ===` no es contenido: si el patrón casa con ella, la primera línea "
+    "te nombra el documento sin sumarlo al total. Con `doc=` muestra hasta 50 líneas, y si "
+    "hay más te dice cómo pedir el resto. Si el texto no trae documentos, `grep` muestra las "
+    "líneas directamente. Tienes `json` sin importarlo, para `json.loads` sobre un bloque "
+    "que venga del contexto. El resto de Python funciona normal: rebanar, `len`, "
+    "comprensiones, `sorted`."
+)
+
+
+def herramientas(dos_pasos: bool) -> str:
+    """La nota de herramientas que corresponde a lo que el REPL tiene instalado.
+
+    `HERRAMIENTAS` es la de dos pasos porque es el default; la de un paso, la de
+    antes del 2026-09-13, se queda con nombre propio para el arm que la apaga.
+    """
+    return HERRAMIENTAS if dos_pasos else HERRAMIENTAS_UN_PASO
 
 
 def rutas(texto: str) -> frozenset[str]:
@@ -199,13 +229,14 @@ def grep(
     *,
     exacto: bool = False,
     doc: str = "",
+    mostrar: bool = True,
 ) -> str:
     r"""Las líneas que casan con el patrón, numeradas, con el total adelante.
 
     `texto` es donde se busca, línea por línea. `patron` es una regex de `re`, no
     un literal: los puntos y los paréntesis hay que escaparlos. `max_hits` es
     cuántas líneas se muestran como mucho; el total se cuenta igual y se dice
-    siempre. `exacto` y `doc` van más abajo, cada uno con su motivo.
+    siempre. `exacto`, `doc` y `mostrar` van más abajo, cada uno con su motivo.
 
     Pliega mayúsculas y acentos, y ese default no es comodidad. Sobre el catálogo
     agronómico, `mosca blanca` en minúscula devolvía 6 de las 23 líneas que hay, y
@@ -263,6 +294,21 @@ def grep(
     los tokens casi no cambian, porque bajo el tope las cabeceras eran líneas
     baratas y su lugar lo ocupan líneas de contenido más largas.
 
+    `mostrar=False` es el modo de dos pasos, y no lo elige el modelo: lo fija el
+    `Workspace`, que lo instala así por default. Cuando el texto trae documentos y
+    no se pidió uno con `doc=`, el resultado es la primera línea sola, la que dice
+    en qué documentos y cuántas en cada uno. El contenido llega recién cuando el
+    modelo nombra el documento, con `doc=` acá o con `read`. Es lo que hace la
+    búsqueda de Codex CLI, que devuelve rutas y nada más, y lo que hace una
+    persona: buscar, elegir qué abrir, y leer. Lo que hace imposible es contestar
+    desde una línea suelta del grep, fuera de su ficha. Las líneas que caen fuera
+    de todo documento se muestran igual, porque no hay nombre con el cual
+    pedirlas; y si el texto no trae documentos, el modo no cambia nada.
+
+    Esta función, llamada directo, muestra las líneas: es el primitivo, y los
+    tests lo fijan así. Lo que el modelo tiene en el namespace es
+    `_grep_dos_pasos`, salvo que el que arma el REPL pida `dos_pasos=False`.
+
     Que pliega va dicho en `HERRAMIENTAS` y no en la cabecera de cada resultado,
     porque es una propiedad fija de la herramienta y no un hecho de esta corrida.
     La cabecera dice lo que cambia entre llamada y llamada, que es cuántas hay y
@@ -285,6 +331,7 @@ def grep(
     rx = re.compile(patron) if exacto else re.compile(sin_acento(patron), re.IGNORECASE)
     filtro = sin_acento(doc).lower()
     hits: list[str] = []
+    sueltos: list[str] = []
     mirados: list[str] = []
     por_doc: dict[str, int] = {}
     cabeceras: list[str] = []
@@ -301,9 +348,12 @@ def grep(
                 cabeceras.append(actual)
             continue
         if dentro and rx.search(buscable):
-            hits.append(f"{actual}:{i}: {original}" if actual else f"{i}: {original}")
             if actual:
+                hits.append(f"{actual}:{i}: {original}")
                 por_doc[actual] = por_doc.get(actual, 0) + 1
+            else:
+                hits.append(f"{i}: {original}")
+                sueltos.append(hits[-1])
     if filtro and not mirados:
         return (
             f"ningún documento casa con {doc!r}, así que no se buscó nada. `doc` se compara "
@@ -328,7 +378,14 @@ def grep(
     casan = "casa" if len(hits) == 1 else "casan"
     linea = "línea" if len(hits) == 1 else "líneas"
     cabecera = f"{len(hits)} {linea} {casan} con {patron!r}{ambito}."
-    if len(hits) > max_hits:
+    if not mostrar and not filtro and por_doc:
+        if len(sueltos) > max_hits:
+            cabecera += (
+                f" {len(sueltos)} de esas caen fuera de todo documento y se muestran; estas "
+                f"son las primeras {max_hits}."
+            )
+        hits = sueltos[:max_hits]
+    elif len(hits) > max_hits:
         resto = "subí max_hits, afina el patrón o acota con doc=" if por_doc else "subí max_hits o afina el patrón"
         cabecera = (
             f"{len(hits)} líneas casan con {patron!r}{ambito}; estas son las primeras "
@@ -345,11 +402,112 @@ def grep(
     return "\n".join([cabecera, *hits])
 
 
+def _grep_dos_pasos(
+    texto: str,
+    patron: str,
+    max_hits: int = MAX_HITS,
+    *,
+    exacto: bool = False,
+    doc: str = "",
+) -> str:
+    """El `grep` que el `Workspace` instala por default: el mismo, sin la puerta.
+
+    Es una función y no un `partial` para que `mostrar` no exista desde el REPL:
+    si el modelo pudiera pedir las líneas con un argumento, el modo no sería el
+    modo, sería una sugerencia.
+    """
+    return grep(texto, patron, max_hits, exacto=exacto, doc=doc, mostrar=False)
+
+
 def _lista(items: list[str], tope: int) -> str:
     """Una lista en una línea, y si pasa del tope dice cuántas quedaron afuera."""
     if len(items) <= tope:
         return ", ".join(items)
     return ", ".join(items[:tope]) + f" y {len(items) - tope} más"
+
+
+def _documentos(lineas: list[str]) -> list[tuple[str, int, int]]:
+    """Cada documento del texto: su ruta y el rango de líneas de contenido.
+
+    Los números son los mismos que usa `grep`, la posición en el texto entero y
+    desde 1, así que el rango que `read` anuncia y el prefijo de un hit hablan de
+    la misma línea. El rango va de la línea que sigue a la cabecera hasta la
+    anterior a la siguiente cabecera; un documento vacío tiene el fin antes del
+    inicio.
+    """
+    docs: list[tuple[str, int, int]] = []
+    ruta = ""
+    inicio = 0
+    for i, linea in enumerate(lineas, 1):
+        cabeza = CABECERA.match(linea)
+        if not cabeza:
+            continue
+        if ruta:
+            docs.append((ruta, inicio, i - 1))
+        ruta, inicio = cabeza.group(1), i + 1
+    if ruta:
+        docs.append((ruta, inicio, len(lineas)))
+    return docs
+
+
+def read(texto: str, doc: str) -> str:
+    """Un documento entero, tal cual está en el texto, para leerlo con su contexto.
+
+    Es el segundo paso del modo de dos pasos: `grep` dice en qué documento está
+    el dato y esto lo trae para que el modelo lo lea con lo que lo rodea, que es
+    lo que una línea suelta no tiene. En el catálogo agronómico la línea 5157 de
+    novermo dice "gusano cogollero. 1.4 L/ha" con el cultivo en la línea anterior
+    y la tabla con la equivalencia por manzana en la 5286; leer la ficha es la
+    única forma de ver las tres juntas.
+
+    `doc` se compara contra la ruta igual que en `grep`, plegando caso y acentos,
+    y una ruta escrita entera gana sobre las que la contienen: `segador.md` es
+    esa ficha aunque exista `segador-plus.md`. Varias rutas que casan no se
+    imprimen todas, se listan y se pide elegir, porque dos fichas juntas son el
+    doble de tokens sin que nadie las haya pedido. Cero rutas y cero documentos
+    son dos avisos distintos, por lo mismo que en `grep`.
+
+    El contenido sale sin numerar. Una ficha mediana son 181 líneas, y un prefijo
+    por línea es un quinto más de tokens para un dato que el modelo no usa al
+    contestar; el rango de líneas va en la primera línea, con los mismos números
+    que usa `grep`, para que `grep(texto, patron, doc=...)` y esto se lean juntos.
+
+    No hay tope, a propósito. La razón de esta función es que el modelo vea el
+    dato con todo lo que lo rodea, y un tope que corta la ficha en la línea 400
+    devuelve el problema que esto vino a sacar: un dato sin su contexto, ahora
+    con la forma de una ficha entera. Sobre el catálogo ninguna pasa de 286
+    líneas. El corpus donde un documento son miles de líneas paga esos tokens, y
+    esa es la decisión: entero o nada, y "nada" se pide con `grep(doc=)`.
+    """
+    lineas, _ = _plegar(texto, plegar=False)
+    docs = _documentos(lineas)
+    if not docs:
+        return (
+            "el texto no trae documentos (ninguna línea `=== ruta ===`), así que no hay nada "
+            "que leer por nombre. Búscalo con grep(texto, patron), que acá muestra las líneas."
+        )
+    filtro = sin_acento(doc).lower()
+    candidatos = [d for d in docs if filtro in sin_acento(d[0]).lower()]
+    exactos = [d for d in candidatos if sin_acento(d[0]).lower() == filtro]
+    if exactos:
+        candidatos = exactos
+    if not candidatos:
+        return (
+            f"ningún documento casa con {doc!r}. `doc` se compara contra la ruta de la línea "
+            f"`=== ruta ===`, no contra el contenido; grep(texto, patron) te dice en cuáles está."
+        )
+    if len(candidatos) > 1:
+        cuantos = len(candidatos)
+        return (
+            f"{cuantos} documentos casan con {doc!r}: "
+            f"{_lista([d[0] for d in candidatos], MAX_HITS)}. Elige uno escribiendo más de la ruta."
+        )
+    ruta, inicio, fin = candidatos[0]
+    total = fin - inicio + 1
+    if total <= 0:
+        return f"{ruta} está vacío: la cabecera y nada más."
+    cabecera = f"{ruta}: {total} {'línea' if total == 1 else 'líneas'}, de la {inicio} a la {fin}."
+    return "\n".join([cabecera, *lineas[inicio - 1 : fin]])
 
 
 @dataclass
@@ -391,6 +549,15 @@ class Workspace:
 
     Las variables persisten entre corridas, así que el modelo puede guardar un
     hallazgo en vez de depender de releer la transcripción, que se va recortando.
+
+    Consultar el contexto son dos pasos por default: `grep` sin `doc=` devuelve
+    solo dónde, y `read` trae un documento entero. `dos_pasos=False` restaura el
+    `grep` que mostraba las líneas, sin `read`, y la nota de `tools` cambia con
+    él, porque un builtin que no se nombra es un builtin que el modelo no usa.
+    Se midió (filas `dos_pasos` de la bitácora, 2026-09-13): mismos aciertos,
+    mismo costo dentro del ruido, medio turno más, y la respuesta sale de la
+    ficha entera en vez de una línea. Es default por eso último, que `acierta()`
+    no mide y el que atiende sí.
     """
 
     def __init__(
@@ -401,10 +568,12 @@ class Workspace:
         extra: Mapping[str, object] | None = None,
         note: str = "",
         bridge: Bridge | None = None,
+        dos_pasos: bool = True,
     ) -> None:
         self.var = var
         self.note = note
         self.bridge = bridge
+        self.dos_pasos = dos_pasos
         self._salida: list[str] = []
         self._lock = asyncio.Lock()
         self._globals: dict[str, object] = {
@@ -415,6 +584,7 @@ class Workspace:
             },
             "grep": grep,
             "json": json,
+            **({"grep": _grep_dos_pasos, "read": read} if dos_pasos else {}),
             **(extra or {}),
             var: payload,
         }
@@ -427,7 +597,8 @@ class Workspace:
         adentro. Un builtin que se agrega sin actualizar la nota es un builtin
         que el modelo nunca va a usar, porque no sabe que existe.
         """
-        return f"{HERRAMIENTAS}\n\n{self.note}" if self.note else HERRAMIENTAS
+        base = herramientas(self.dos_pasos)
+        return f"{base}\n\n{self.note}" if self.note else base
 
     def _print(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         self._salida.append(sep.join(str(a) for a in args) + end)
