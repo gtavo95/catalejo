@@ -199,29 +199,35 @@ class TestObjetivos:
 
 
 class TestContrato:
-    def test_por_default_manda_a_la_hoja(self) -> None:
-        assert "`ontologia/objetivos.md` tiene los alias" in contrato()
-        assert "`objetivos`" not in contrato()
+    def test_por_default_manda_a_objetivos(self) -> None:
+        """Default desde el 14 de septiembre de 2026, por la pregunta compuesta.
 
-    def test_con_ontologia_cambia_esa_vineta_y_solo_esa(self) -> None:
-        con = contrato(ontologia=True)
+        "salivazo en la caña, un enraizador y algo para el picudo" salía 1/3 con la
+        plaga por grep: el OR de los tres pedidos casa en 38 documentos y la ficha de
+        Biomet queda enterrada. Con `objetivos` en el REPL, 3/3.
+        """
+        assert "En el REPL tenés `objetivos`" in contrato()
+        assert "`ontologia/objetivos.md` tiene los alias" not in contrato()
 
-        assert "`ontologia/objetivos.md` tiene los alias" not in con
-        assert "En el REPL tenés `objetivos`" in con
-        assert con.replace(BUSCAR_EN_OBJETIVOS, BUSCAR) == contrato()
+    def test_sin_ontologia_cambia_esa_vineta_y_solo_esa(self) -> None:
+        sin = contrato(ontologia=False)
+
+        assert "`ontologia/objetivos.md` tiene los alias" in sin
+        assert "`objetivos`" not in sin
+        assert sin.replace(BUSCAR, BUSCAR_EN_OBJETIVOS) == contrato()
 
     def test_el_tipo_de_producto_es_un_eje_en_las_dos_variantes(self) -> None:
-        """La viñeta de `tags` va afuera de BUSCAR, así que `--ontologia` no la toca.
+        """La viñeta de `tags` va afuera de BUSCAR, así que `--sin-ontologia` no la toca.
 
         Antes de esta viñeta, "algo para el tratamiento del agua" salía 1 de 3: el
         modelo buscaba `corrector de pH|buffer` y la ficha de Novicor dice "corrector
         de dureza". El tag `corrector-de-dureza` estaba en `productos` desde siempre;
         lo que no estaba era una línea que dijera que ese eje existe.
         """
-        for con in (contrato(), contrato(ontologia=True)):
+        for con in (contrato(), contrato(ontologia=False)):
             assert "el eje es `tags` en `productos`" in con
             assert "`ontologia/tipos-producto.md`" in con
 
     def test_el_pedido_lleva_el_contrato_que_le_piden(self) -> None:
-        assert "`objetivos`" not in pedido("¿zompopo?", ())
-        assert "En el REPL tenés `objetivos`" in pedido("¿zompopo?", (), ontologia=True)
+        assert "En el REPL tenés `objetivos`" in pedido("¿zompopo?", ())
+        assert "`objetivos`" not in pedido("¿zompopo?", (), ontologia=False)

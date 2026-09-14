@@ -12,7 +12,7 @@
     uv run evals.py --agro          las preguntas agronómicas, contra el agente de agro.py
     uv run evals.py --agro --plan   las mismas, con la checklist prendida
     uv run evals.py --agro --sin-citas   las mismas, sin la célula de citas (el arm baseline)
-    uv run evals.py --agro --ontologia   las mismas, con `objetivos` como dato en el REPL
+    uv run evals.py --agro --sin-ontologia   las mismas, sin `objetivos` en el REPL (el baseline de `ontologia`)
     uv run evals.py --openai        el mismo examen contra OpenAI
 
 El corpus es `successo-okf`, la wiki de producto de una empresa de bioinsumos:
@@ -225,7 +225,7 @@ def montaje(argv: list[str]) -> Montaje:
     if "--agro" in argv:
         plan = "--plan" in argv
         citas = "--sin-citas" not in argv
-        ontologia = "--ontologia" in argv
+        ontologia = "--sin-ontologia" not in argv
         return Montaje(
             tsv="agro.tsv",
             corpus=agro.corpus,

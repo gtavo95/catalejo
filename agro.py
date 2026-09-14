@@ -6,7 +6,7 @@
     uv run agro.py --openai "..."        el mismo agente contra OpenAI
     uv run agro.py --plan "..."          además, la checklist del turno
     uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
-    uv run agro.py --ontologia "..."     además, `objetivos` como dato en el REPL
+    uv run agro.py --sin-ontologia "..." sin `objetivos` en el REPL, la plaga solo por grep
     uv run agro.py --contenedor "..."    el REPL en un proceso hijo que se mata si tarda
     uv run agro.py --un-paso "..."       el grep de antes, que muestra las líneas, sin `read`
 
@@ -158,8 +158,8 @@ Para contestar esto:
 """
 
 
-def contrato(*, ontologia: bool = False) -> str:
-    """El CONTRATO, y con `ontologia=True` el que nombra `objetivos` en vez de la hoja.
+def contrato(*, ontologia: bool = True) -> str:
+    """El CONTRATO, que nombra `objetivos`, y con `ontologia=False` el que manda a la hoja.
 
     Cambia una sola viñeta, la primera, porque es la que dice qué hacer cuando el
     término del cliente no aparece. Hoy la respuesta es "probá el nombre
@@ -551,7 +551,7 @@ def armar(
     ver: bool,
     plan: bool = False,
     citas: bool = True,
-    ontologia: bool = False,
+    ontologia: bool = True,
     contenedor: bool = False,
     dos_pasos: bool = True,
 ) -> tuple[Cell, Repl]:
@@ -585,13 +585,18 @@ def armar(
     `traza` va después del planner y no antes: mira los últimos dichos del paso, y
     si corriera primero, el mensaje del plan todavía no existiría.
 
-    `ontologia=True` mete `objetivos` por la misma puerta que `productos` y cambia
-    la primera viñeta del CONTRATO (ver `contrato`). Va apagada porque se midió
-    (filas `ontologia_como_dato` de la bitácora): no mueve aciertos, zompopo cierra
-    en 3 turnos siempre en vez de 5 a 13, y cogollero paga un turno más porque
-    `grep('cogollo')` cae en la ficha directo. La hoja ya es dato para `grep` por
-    estar en el corpus, y la cabecera por documento la distingue de una ficha.
-    Pasa a default el día que un alias que la ficha no escribe lo pida.
+    `ontologia` mete `objetivos` por la misma puerta que `productos` y cambia la
+    primera viñeta del CONTRATO (ver `contrato`). Estuvo apagada desde que se
+    midió sobre nueve casos simples (filas `ontologia_como_dato` de la bitácora):
+    no movía aciertos, zompopo cerraba en 3 turnos siempre en vez de 5 a 13, y
+    cogollero pagaba un turno más porque `grep('cogollo')` cae en la ficha
+    directo. Es default desde el 14 de septiembre de 2026 por la pregunta
+    compuesta, "salivazo en la caña, un enraizador y algo para el picudo": con
+    grep, el OR de los tres pedidos casa en 38 documentos y la ficha de Biomet,
+    con 3 hits, queda enterrada, o el modelo la encuentra en el turno 2 y la
+    pierde del prompt antes de contestar. Salivazo salía 1/3 y con `objetivos`
+    3/3, en 5 a 7 mensajes en vez de 17 (filas `ontologia_default`).
+    `ontologia=False` (`--sin-ontologia`) restaura el arm anterior.
 
     `contenedor=True` corre el código del modelo en un proceso hijo que se mata
     si tarda; `llm` y el índice siguen acá. Lo que el modelo ve no cambia. El que
@@ -646,7 +651,7 @@ def pedido(
     historia: tuple[tuple[str, str], ...],
     *,
     plan: bool = False,
-    ontologia: bool = False,
+    ontologia: bool = True,
 ) -> str:
     """La pregunta de ahora, con lo ya hablado adentro del MISMO mensaje.
 
@@ -740,7 +745,7 @@ async def responder(
     *,
     ver: bool,
     plan: bool = False,
-    ontologia: bool = False,
+    ontologia: bool = True,
 ) -> str:
     """Una pregunta, contestada. El Log arranca limpio cada vez.
 
@@ -786,7 +791,7 @@ async def main(argv: list[str]) -> None:
     ver = "--ver" in argv
     plan = "--plan" in argv
     citas = "--sin-citas" not in argv
-    ontologia = "--ontologia" in argv
+    ontologia = "--sin-ontologia" not in argv
     contenedor = "--contenedor" in argv
     dos_pasos = "--un-paso" not in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
@@ -810,7 +815,7 @@ async def main(argv: list[str]) -> None:
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
         f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
-        f"{' · con ontología' if ontologia else ''}"
+        f"{' · sin ontología' if not ontologia else ''}"
         f"{' · en un proceso hijo' if contenedor else ''}"
         f"{' · en un paso' if not dos_pasos else ''}"
     )
