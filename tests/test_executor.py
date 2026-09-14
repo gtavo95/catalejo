@@ -47,6 +47,16 @@ class TestRender:
         """Si no, el modelo no distingue "corrió y no imprimió" de "no corrió"."""
         assert render(Output()) == "[repl] salida:\n(el snippet no imprimió nada)"
 
+    def test_las_notas_van_al_pie(self) -> None:
+        """Al pie de la salida y no como mensaje aparte, para que la ventana cuente
+        lo mismo que antes y las notas queden adentro de lo que conserva."""
+        out = Output(stdout="42\n", notas=("biomet: 0.7 L/Mz", "pH 5.5-7.5"))
+
+        assert render(out) == "[repl] salida:\n42\n[notas]\n- biomet: 0.7 L/Mz\n- pH 5.5-7.5"
+
+    def test_sin_notas_el_pie_no_existe(self) -> None:
+        assert "[notas]" not in render(Output(stdout="42\n"))
+
 
 class TestExecutor:
     async def test_corre_el_codigo_de_la_ultima_propuesta(self) -> None:

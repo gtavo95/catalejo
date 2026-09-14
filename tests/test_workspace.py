@@ -77,6 +77,44 @@ class TestWorkspace:
         assert sorted(o.stdout for o in outs) == ["1\n", "2\n"]
 
 
+class TestNotas:
+    """La variable `notas` vuelve en cada Output, para que el modelo la vea al pie
+    de cada salida sin gastar un turno en `print(notas)`."""
+
+    async def test_lo_anotado_viaja_en_el_output(self) -> None:
+        ws = Workspace(extra={"notas": []})
+
+        await ws.run("notas.append('biomet: 0.7 L/Mz')")
+        out = await ws.run("notas.append('pH 5.5-7.5')")
+
+        assert out.notas == ("biomet: 0.7 L/Mz", "pH 5.5-7.5")
+        assert out.stdout == ""
+
+    async def test_sin_la_variable_no_hay_nada(self) -> None:
+        assert (await Workspace().run("x = 1")).notas == ()
+
+    async def test_si_no_es_una_lista_no_se_muestra(self) -> None:
+        """El modelo puede pisar el nombre; una cadena o un dict no son notas."""
+        ws = Workspace()
+
+        assert (await ws.run("notas = 'texto'")).notas == ()
+
+    async def test_las_notas_se_muestran_como_texto(self) -> None:
+        ws = Workspace(extra={"notas": []})
+
+        out = await ws.run("notas.append({'dosis': 0.7})")
+
+        assert out.notas == ("{'dosis': 0.7}",)
+
+    async def test_un_error_en_el_bloque_no_pierde_las_notas(self) -> None:
+        ws = Workspace(extra={"notas": ["antes"]})
+
+        out = await ws.run("notas.append('durante'); print(no_existe)")
+
+        assert out.err.startswith("NameError:")
+        assert out.notas == ("antes", "durante")
+
+
 class TestVentanaDeSoloLectura:
     async def test_no_se_puede_importar(self) -> None:
         ws = Workspace()

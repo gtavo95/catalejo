@@ -640,4 +640,9 @@ class Workspace:
             exec(code, self._globals)
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
-        return Output(stdout="".join(self._salida), err=err)
+        notas = self._globals.get("notas")
+        return Output(
+            stdout="".join(self._salida),
+            err=err,
+            notas=tuple(str(n) for n in notas) if isinstance(notas, list) else (),
+        )

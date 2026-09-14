@@ -7,6 +7,7 @@
     uv run agro.py --plan "..."          además, la checklist del turno
     uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
     uv run agro.py --sin-ontologia "..." sin `objetivos` en el REPL, la plaga solo por grep
+    uv run agro.py --sin-notas "..."     sin la viñeta que pide anotar (el baseline de `notas`)
     uv run agro.py --contenedor "..."    el REPL en un proceso hijo que se mata si tarda
     uv run agro.py --un-paso "..."       el grep de antes, que muestra las líneas, sin `read`
 
@@ -135,6 +136,49 @@ ruido. Si un día no alcanza, el paso siguiente es `tipos` como dato, igual que
 `objetivos`, con el join por `tags`.
 """
 
+NOTAS = """- `notas` ya existe, vacía. Cuando una salida traiga un dato que va a la respuesta, anotalo
+  al principio del bloque siguiente, una línea por hecho,
+  `notas.append("biomet: 0.7 L/Mz en 140 L, pH 5.5-7.5")`, y seguí consultando en ese
+  mismo bloque. Las salidas viejas se recortan del prompt y `notas` no; lo que anotes
+  vuelve al pie de cada salida.
+"""
+"""La memoria del turno: encontrás, guardás.
+
+Salió de la compuesta "salivazo en la caña, un enraizador y algo para el picudo".
+En el run 1 el modelo encontró Biomet en el turno 2, le pidió pH y dosis en el 3,
+y en el 9 contestó que para salivazo el catálogo ofrece NoviTrap: `window` conserva
+la pregunta y los últimos 6 mensajes, y los turnos 1 a 3 ya no estaban en el
+prompt. La vía prevista era `notas`, que el preámbulo pide desde siempre ("guardá
+los hallazgos importantes") y el aviso de recorte recuerda. En 9 corridas de las
+dos compuestas el modelo la escribió 0 veces.
+
+Dos motivos, los dos medidos en este repo. Estaba pedido en el preámbulo y en
+abstracto, y lo mismo dicho en el turno del usuario rinde 6/12 contra 0/12 (prior
+3 de `ab-testing`); la viñeta de `tags` funcionó por estar acá. Y guardar no tenía
+premio visible: la nota quedaba en el workspace y verla costaba un turno de
+`print(notas)`. Por eso la viñeta viene con plomería: `Output` trae la instantánea
+de `notas` y `render` la pone al pie de cada salida, así que el modelo ve la suya
+en el mismo bloque que la escribió y la sigue viendo cuando la ventana recortó la
+salida de donde salió. La ventana no cambia. El nombre es el mismo que ya usa el
+preámbulo, y `armar` la crea vacía para que el primer `append` no dé NameError.
+
+La primera redacción pedía que "cada bloque que traiga un dato lo guarde antes de
+terminar", que es imposible al pie de la letra: el bloque no vio su salida todavía.
+El modelo la cumplía con un bloque aparte, solo de notas, y ese bloque repagaba el
+prompt con las fichas leídas adentro: la suite pasó de 6.2 a 8.5 turnos y de 15.3k
+a 24.7k tokens (+62%) sin mover aciertos, y 2 de 6 corridas a mano perdieron un
+turno en `globals().get("notas", [])`, porque el modelo no sabía que la lista ya
+existía. Esta redacción dice las dos cosas: la lista existe, y la nota va al
+principio del bloque siguiente, que sigue consultando. Medido (filas `notas` de la
+bitácora, n=3): la compuesta del salivazo con la plaga por grep, que es el régimen
+que pisa el corte, pasó de Biomet 1/3 y 61k tokens a 3/3 y 35k; la suite de 11
+quedó 11/11 con 6.8 turnos y 18.5k tokens (+21%, adentro del ruido), 31 bloques
+que empiezan con `notas.append` y ninguno que la recree. En la compleja de tomate,
+cinco fichas y una síntesis cruzada, el baseline no fallaba: pagaba releyendo las
+fichas que la ventana se llevó (154k en 17 turnos), y con notas no relee.
+`notas=False` (`--sin-notas`) saca la viñeta y deja la plomería inerte.
+"""
+
 CONTRATO = f"""
 
 Para contestar esto:
@@ -153,12 +197,12 @@ Para contestar esto:
 - `productos` es un índice derivado del texto, no la fuente. Si el índice y la ficha
   difieren, manda la ficha, y para lo que el índice no modela (dosis por manzana, forma
   de aplicación, hora del día) andá al texto con grep.
-- Cerrá con una línea `FUENTE: productos/x.md` por cada archivo del que sacaste un dato,
+{NOTAS}- Cerrá con una línea `FUENTE: productos/x.md` por cada archivo del que sacaste un dato,
   o `FUENTE: ninguna` si no salió del catálogo.
 """
 
 
-def contrato(*, ontologia: bool = True) -> str:
+def contrato(*, ontologia: bool = True, notas: bool = True) -> str:
     """El CONTRATO, que nombra `objetivos`, y con `ontologia=False` el que manda a la hoja.
 
     Cambia una sola viñeta, la primera, porque es la que dice qué hacer cuando el
@@ -168,8 +212,12 @@ def contrato(*, ontologia: bool = True) -> str:
     la entrada trae las `fichas` que leer; si no casa, el catálogo no lo cubre y el
     cero es una afirmación sobre un conjunto cerrado, no una ausencia en un texto. Es
     palanca de prompt y de builtin a la vez, así que se mide con las dos juntas.
+
+    `notas=False` saca la viñeta de `notas` y deja la plomería, que sin nadie que
+    anote no muestra nada: es el baseline de esa palanca, no otro agente.
     """
-    return CONTRATO.replace(BUSCAR, BUSCAR_EN_OBJETIVOS) if ontologia else CONTRATO
+    texto = CONTRATO.replace(BUSCAR, BUSCAR_EN_OBJETIVOS) if ontologia else CONTRATO
+    return texto if notas else texto.replace(NOTAS, "")
 
 
 REGISTRO: Registro = {
@@ -614,7 +662,7 @@ def armar(
     """
     regs = indice()
     verbos = Verbos()
-    extra: dict[str, Any] = {"productos": regs}
+    extra: dict[str, Any] = {"productos": regs, "notas": []}
     if ontologia:
         extra["objetivos"] = objetivos(regs)
     if plan:
@@ -652,6 +700,7 @@ def pedido(
     *,
     plan: bool = False,
     ontologia: bool = True,
+    notas: bool = True,
 ) -> str:
     """La pregunta de ahora, con lo ya hablado adentro del MISMO mensaje.
 
@@ -668,7 +717,7 @@ def pedido(
     medición de lo que pasa cuando algo así se nombra en el preámbulo, que es 0 de
     12 corridas vivas contra 6 de 12.
     """
-    texto = contrato(ontologia=ontologia)
+    texto = contrato(ontologia=ontologia, notas=notas)
     if plan:
         texto += f"\n{INSTRUCCIONES}\n\n{render_plan(proyectar(SEMILLA))}\n"
     if not historia:
@@ -746,6 +795,7 @@ async def responder(
     ver: bool,
     plan: bool = False,
     ontologia: bool = True,
+    notas: bool = True,
 ) -> str:
     """Una pregunta, contestada. El Log arranca limpio cada vez.
 
@@ -753,8 +803,13 @@ async def responder(
     `reads` vendría en más de cero desde el primer paso y `grounded` no volvería a
     disparar en toda la sesión: la pregunta cinco podría contestarse de memoria
     amparada en el grep de la pregunta uno.
+
+    `notas` arranca vacía por la misma razón: el workspace vive toda la sesión y
+    una nota de la pregunta anterior al pie de las salidas de esta sería un dato
+    falso. Se rebindea en vez de `.clear()` por si el modelo la pisó con otra cosa.
     """
-    dicho = pedido(pregunta, historia, plan=plan, ontologia=ontologia)
+    await ws.run("notas = []")
+    dicho = pedido(pregunta, historia, plan=plan, ontologia=ontologia, notas=notas)
     out = await agente(Log(said=(Message(Role.USER, dicho),)))
     if ver:
         for m in out.said:
@@ -792,6 +847,7 @@ async def main(argv: list[str]) -> None:
     plan = "--plan" in argv
     citas = "--sin-citas" not in argv
     ontologia = "--sin-ontologia" not in argv
+    notas = "--sin-notas" not in argv
     contenedor = "--contenedor" in argv
     dos_pasos = "--un-paso" not in argv
     pregunta = " ".join(a for a in argv if not a.startswith("-"))
@@ -815,14 +871,16 @@ async def main(argv: list[str]) -> None:
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
         f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
-        f"{' · sin ontología' if not ontologia else ''}"
+        f"{' · sin ontología' if not ontologia else ''}{' · sin notas' if not notas else ''}"
         f"{' · en un proceso hijo' if contenedor else ''}"
         f"{' · en un paso' if not dos_pasos else ''}"
     )
 
     try:
         if pregunta:
-            await responder(agente, ws, pregunta, (), ver=ver, plan=plan, ontologia=ontologia)
+            await responder(
+                agente, ws, pregunta, (), ver=ver, plan=plan, ontologia=ontologia, notas=notas
+            )
             return
         print("\033[2mpreguntá, o Ctrl-D para salir\033[0m")
         while True:
@@ -835,7 +893,14 @@ async def main(argv: list[str]) -> None:
             if not pregunta:
                 continue
             respuesta = await responder(
-                agente, ws, pregunta, historia, ver=ver, plan=plan, ontologia=ontologia
+                agente,
+                ws,
+                pregunta,
+                historia,
+                ver=ver,
+                plan=plan,
+                ontologia=ontologia,
+                notas=notas,
             )
             historia = (*historia, (pregunta, respuesta))[-3:]
     finally:

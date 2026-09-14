@@ -49,6 +49,11 @@ def render(out: Output) -> str:
     precio" con el documento en la mano. El presupuesto se cuida acotando el DATO
     en la fuente, no la SALIDA por conteo de caracteres, que corta a ciegas donde
     caiga.
+
+    Si el workspace tiene `notas`, van al pie, una línea por nota. Al pie y no
+    como mensaje aparte, para que `window` cuente lo mismo que antes: la ventana
+    conserva las últimas salidas enteras, así que las notas están siempre en el
+    prompt, y el modelo ve la suya en la salida del mismo bloque que la escribió.
     """
     partes = ["[repl] salida:"]
     if out.stdout:
@@ -57,6 +62,8 @@ def render(out: Output) -> str:
         partes.append(f"error: {out.err}")
     if not out.stdout and not out.err:
         partes.append("(el snippet no imprimió nada)")
+    if out.notas:
+        partes.append("[notas]\n" + "\n".join(f"- {n}" for n in out.notas))
     return "\n".join(partes)
 
 

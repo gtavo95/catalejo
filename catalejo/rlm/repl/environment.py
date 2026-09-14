@@ -50,11 +50,18 @@ class Output:
     Python no cuesta tokens. Deja de serlo cuando el código del modelo llama a
     otro modelo: sin este campo, el gasto del árbol recursivo es invisible para
     el `budget` del padre y la recursión se financia sola.
+
+    `notas` es la instantánea de la variable `notas` del workspace al terminar
+    la corrida, si existe y es una lista; si no, la tupla vacía. Viaja acá para
+    que `render` la muestre al pie de cada salida: lo que el modelo guardó vuelve
+    al prompt sin que tenga que gastar un turno en `print(notas)`, y sigue ahí
+    cuando la ventana ya recortó la salida en que lo encontró.
     """
 
     stdout: str = ""
     err: str = ""
     spent: int = 0
+    notas: tuple[str, ...] = ()
 
 
 class Environment(Protocol):

@@ -1,12 +1,15 @@
 """Lo que el asesor sirve como respuesta, que no siempre es lo que el modelo dijo."""
 
-from catalejo.core import Fail, Log, Message, Role
+from catalejo.core import Conversation, Fail, Log, Message, Role
+from catalejo.llm import Reply
 
 from agro import (
     BUNDLE,
     BUSCAR,
     BUSCAR_EN_OBJETIVOS,
+    NOTAS,
     SIN_CONSULTAR,
+    armar,
     claves,
     contrato,
     final,
@@ -14,11 +17,13 @@ from agro import (
     objetivos,
     pedido,
     resolver,
+    responder,
     vocabulario,
 )
 
 SIN_FUNDAMENTO = Fail("grounding", "contestó sin haber consultado el contexto")
 SIN_PASOS = Fail("loop", "tope de pasos: 12")
+FUENTE_VINETA = "- Cerrá con una línea `FUENTE: productos/x.md`"
 
 
 def dicho(texto: str) -> Message:
@@ -231,3 +236,56 @@ class TestContrato:
     def test_el_pedido_lleva_el_contrato_que_le_piden(self) -> None:
         assert "En el REPL tenés `objetivos`" in pedido("¿zompopo?", ())
         assert "`objetivos`" not in pedido("¿zompopo?", (), ontologia=False)
+
+    def test_las_notas_se_piden_en_el_turno_del_usuario_en_las_dos_variantes(self) -> None:
+        """Va acá y no en el preámbulo, que ya lo pedía en abstracto: en 9 corridas de
+        las dos compuestas el modelo escribió `notas` 0 veces, y el run 1 de salivazo
+        perdió Biomet del prompt por eso. Fuera de BUSCAR, así que `--sin-ontologia`
+        no la toca."""
+        for con in (contrato(), contrato(ontologia=False)):
+            assert "`notas` ya existe" in con
+            assert "al principio del bloque siguiente" in con
+            assert "`notas.append(" in con
+            assert "vuelve al pie de cada salida" in con
+
+    def test_sin_notas_saca_esa_vineta_y_solo_esa(self) -> None:
+        sin = contrato(notas=False)
+
+        assert "notas" not in sin
+        assert sin.replace(FUENTE_VINETA, NOTAS + FUENTE_VINETA) == contrato()
+        assert "notas" not in pedido("¿zompopo?", (), notas=False)
+
+
+class Mudo:
+    """Un `Provider` que nunca se llama: armar el agente no habla con nadie."""
+
+    model = "mudo"
+
+    async def complete(self, conv: Conversation) -> Reply:
+        raise AssertionError("armar el agente no debería llamar al modelo")
+
+    async def aclose(self) -> None:
+        pass
+
+
+class TestNotasEnElWorkspace:
+    async def test_armar_la_crea_vacia_y_el_primer_append_no_revienta(self) -> None:
+        _, ws = armar("=== productos/x.md ===\nhola", Mudo(), ver=False)
+
+        out = await ws.run("notas.append('x')")
+
+        assert out.err == ""
+        assert out.notas == ("x",)
+
+    async def test_responder_la_vacia_por_pregunta(self) -> None:
+        """El workspace vive toda la sesión; una nota de la pregunta anterior al pie
+        de las salidas de esta sería un dato falso."""
+        _, ws = armar("=== productos/x.md ===\nhola", Mudo(), ver=False)
+        await ws.run("notas.append('de la pregunta anterior')")
+
+        async def agente(seen: Log) -> Log:
+            return Log(said=(dicho("Sin producto.\nFUENTE: ninguna"),), reads=1)
+
+        await responder(agente, ws, "¿y ahora?", (), ver=False)
+
+        assert (await ws.run("pass")).notas == ()

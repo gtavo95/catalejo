@@ -20,6 +20,17 @@ class TestContenedor:
         finally:
             c.cerrar()
 
+    async def test_las_notas_cruzan_el_pipe(self) -> None:
+        """`Output` viaja picklado, así que el campo nuevo viaja solo; y `notas`
+        es dato, no función, así que el `extra` la lleva al hijo."""
+        c = Contenedor("x", extra={"notas": []})
+        try:
+            out = await c.run("notas.append('cruzó')")
+
+            assert out.notas == ("cruzó",)
+        finally:
+            c.cerrar()
+
     async def test_un_error_vuelve_en_err_y_no_levanta(self) -> None:
         c = Contenedor()
         try:
