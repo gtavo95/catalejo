@@ -2,7 +2,7 @@
 
 import pytest
 
-from catalejo.core import Conversation, Fail, Log, Message, PlanOp, Role, activa, cerrado, proyectar
+from catalejo.core import Conversation, Fail, Log, Message, Plan, PlanOp, Role, activa, cerrado, proyectar
 from catalejo.llm import Reply, Stub
 from agro import (
     BUNDLE,
@@ -14,6 +14,7 @@ from agro import (
     SESION,
     SIN_CONSULTAR,
     VENTA,
+    anticipar,
     armar,
     claves,
     cliente,
@@ -320,10 +321,14 @@ def pedido_del(pregunta: str, historia: tuple[tuple[str, str], ...] = ()) -> Log
     return Log(said=(Message(Role.USER, pedido(pregunta, historia, venta=proyectar(SESION))),))
 
 
-def hoja(ops: tuple[PlanOp, ...]) -> str:
-    h = activa(proyectar(ops))
+def hoja_de(plan: Plan) -> str:
+    h = activa(plan)
     assert h is not None
     return h.id
+
+
+def hoja(ops: tuple[PlanOp, ...]) -> str:
+    return hoja_de(proyectar(ops))
 
 
 class TestCliente:
@@ -432,6 +437,34 @@ class TestPedidoConVenta:
         texto = pedido("dos", (), venta=proyectar((*SESION, PlanOp("mark", "plaga", status="done"))))
 
         assert "    [x] plaga" in texto
+
+
+class TestAnticipar:
+    """La venta que va al pedido ya tiene cerrado lo que el cliente acaba de decir."""
+
+    def test_la_plaga_de_este_turno_cierra_antes_de_dibujar(self) -> None:
+        historia = (("tengo una plaga en el tomate", "¿Cuál?"),)
+
+        plan = anticipar((*SESION,), "mosca blanca", historia)
+
+        assert cerrado(plan, plan[1]) and hoja_de(plan) == "producto"
+        texto = pedido("mosca blanca", historia, venta=plan)
+        assert "    [x] plaga" in texto and "no exige consultar nada" not in texto
+
+    def test_sin_plaga_en_lo_dicho_queda_abierta(self) -> None:
+        plan = anticipar((), "tengo una plaga en el tomate", ())
+
+        assert hoja_de(plan) == "plaga"
+        assert "no exige consultar nada" in pedido("tengo una plaga en el tomate", (), venta=plan)
+
+    def test_el_area_dicha_en_un_turno_anterior_tambien_cuenta(self) -> None:
+        """`cliente` junta las `P:` de la historia con la pregunta de ahora."""
+        historia = (("mosca blanca en tomate, dos manzanas", "Metaveria."),)
+        previos = (*SESION, PlanOp("mark", "plaga", status="done"), PlanOp("mark", "producto", status="done"), PlanOp("mark", "receta", status="done"))
+
+        plan = anticipar(previos, "¿y el agua?", historia)
+
+        assert hoja_de(plan) == "dudas"
 
 
 class TestLaVentaDePuntaAPunta:

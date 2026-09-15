@@ -82,6 +82,7 @@ from catalejo.core import (
     Status,
     activa,
     cerrado,
+    cerrar,
     hijos,
     pendientes,
     proyectar,
@@ -97,6 +98,7 @@ from catalejo.rlm import (
     Verbos,
     avanzar,
     citada,
+    cumplidos,
     derivar,
     drive,
     exigir,
@@ -896,9 +898,13 @@ def armar(
     return drive(modelo, h, ws, keep_recent=6, max_steps=12, budget=150_000, extras=extras), ws
 
 
+Historia = tuple[tuple[str, str], ...]
+"""Lo hablado: pares (pregunta, respuesta), que `pedido` mete en el primer mensaje."""
+
+
 def pedido(
     pregunta: str,
-    historia: tuple[tuple[str, str], ...],
+    historia: Historia,
     *,
     plan: bool = False,
     venta: Plan | None = None,
@@ -920,9 +926,10 @@ def pedido(
     medición de lo que pasa cuando algo así se nombra en el preámbulo, que es 0 de
     12 corridas vivas contra 6 de 12.
 
-    Con `venta`, el plan de la venta tal como va: el turno 2 abre con `[x] plaga`
-    ya dibujado. La checklist del turno no se dibuja acá porque todavía no
-    existe: la siembra `derivar` en el primer paso, según la hoja activa. Y
+    Con `venta`, el plan de la venta tal como va, ya con lo que el cliente acaba
+    de decir (ver `anticipar`): el turno en que dice "mosca blanca" abre con
+    `[x] plaga` dibujado. La checklist del turno no se dibuja acá porque todavía
+    no existe: la siembra `derivar` en el primer paso, según la hoja activa. Y
     cuando la hoja activa no exige nada, una línea que lo diga: en dos corridas
     de tres el modelo pasó los doce pasos del turno 1 preguntando la plaga con
     `print` adentro de bloques de código, porque "respuesta final" en el
@@ -944,6 +951,27 @@ def pedido(
         return pregunta + texto
     previas = "\n\n".join(f"P: {p}\nR: {r[:500]}" for p, r in historia)
     return f"{HABLADO}\n{previas}\n\n{AHORA}\n{pregunta}{texto}"
+
+
+def anticipar(course: tuple[PlanOp, ...], pregunta: str, historia: Historia) -> Plan:
+    """La venta como queda con lo que el cliente acaba de decir, para dibujarla en el pedido.
+
+    Las compuertas sobre las palabras del cliente, `dijo_plaga` y `dijo_area`, se
+    cumplen con el mensaje de este turno, pero `avanzar` recién las corre en el
+    primer paso, cuando el pedido ya está escrito. Sin esto, el turno en que el
+    cliente dice "mosca blanca" abre con `[ ] plaga` y la línea que manda
+    preguntarle la plaga, y el modelo, obediente, contesta "¿confirmás que es
+    mosca blanca en tomate?" y deja la checklist abierta (corrida de humo del
+    15 de septiembre de 2026, turno 2 caído por eso). Acá se corren las mismas
+    compuertas sobre el mismo texto, el pedido sin venta, que es lo que
+    `cliente` desarma. Lo que cierran NO se guarda en `course`: `avanzar` lo va
+    a emitir igual en el paso 1, y aunque marcarlo dos veces diera el mismo
+    plan, el canal tendría dos ops donde pasó una cosa.
+    """
+    ops = course or SESION
+    dicho = Log(said=(Message(Role.USER, pedido(pregunta, historia)),))
+    listos, _ = cumplidos(registro_sesion(objetivos(indice())), dicho)
+    return proyectar((*ops, *cerrar(proyectar(ops), listos)))
 
 
 SIN_CONSULTAR = "No pude revisar el catálogo, así que no tengo qué recomendarte. Volvé a preguntar."
@@ -1005,19 +1033,18 @@ def cuenta(out: Log, ws: Repl) -> str:
     return f"{out.spent:,} tokens, {len(out.said)} turnos{delegado}{fallas}"
 
 
-async def responder(
+async def turno(
     agente: Cell,
     ws: Repl,
     pregunta: str,
-    historia: tuple[tuple[str, str], ...],
+    historia: Historia,
     *,
-    ver: bool,
     plan: bool = False,
     course: tuple[PlanOp, ...] | None = None,
     ontologia: bool = True,
     notas: bool = True,
-) -> tuple[str, tuple[PlanOp, ...]]:
-    """Una pregunta, contestada. El Log arranca limpio cada vez, salvo `course`.
+) -> Log:
+    """Una pregunta, corrida. El Log arranca limpio cada vez, salvo `course`.
 
     Solo viaja la prosa de las respuestas anteriores. Si arrastrara el Log entero,
     `reads` vendría en más de cero desde el primer paso y `grounded` no volvería a
@@ -1036,11 +1063,34 @@ async def responder(
     `notas` arranca vacía por la misma razón: el workspace vive toda la sesión y
     una nota de la pregunta anterior al pie de las salidas de esta sería un dato
     falso. Se rebindea en vez de `.clear()` por si el modelo la pisó con otra cosa.
+
+    Devuelve el Log crudo y no imprime nada, porque tiene dos lectores con dos
+    políticas: `responder` lo sirve en la terminal con `final`, y `evals.py` lo
+    califica con el texto tal como salió. Lo que comparten es esto, y por eso
+    el eval multi-turno corre esta función y no una copia.
     """
     await ws.run("notas = []")
-    venta = proyectar(course or SESION) if course is not None else None
+    venta = anticipar(course, pregunta, historia) if course is not None else None
     dicho = pedido(pregunta, historia, plan=plan, venta=venta, ontologia=ontologia, notas=notas)
-    out = await agente(Log(said=(Message(Role.USER, dicho),), course=course or ()))
+    return await agente(Log(said=(Message(Role.USER, dicho),), course=course or ()))
+
+
+async def responder(
+    agente: Cell,
+    ws: Repl,
+    pregunta: str,
+    historia: Historia,
+    *,
+    ver: bool,
+    plan: bool = False,
+    course: tuple[PlanOp, ...] | None = None,
+    ontologia: bool = True,
+    notas: bool = True,
+) -> tuple[str, tuple[PlanOp, ...]]:
+    """`turno`, servido en la terminal: la respuesta con `final`, la cuenta y la venta."""
+    out = await turno(
+        agente, ws, pregunta, historia, plan=plan, course=course, ontologia=ontologia, notas=notas
+    )
     if ver:
         for m in out.said:
             quien = {Role.USER: "repl", Role.ASSISTANT: "modelo"}.get(m.role, m.role.value)
@@ -1108,7 +1158,7 @@ async def main(argv: list[str]) -> None:
         contenedor=contenedor,
         dos_pasos=dos_pasos,
     )
-    historia: tuple[tuple[str, str], ...] = ()
+    historia: Historia = ()
     course: tuple[PlanOp, ...] | None = () if sesion else None
 
     print(

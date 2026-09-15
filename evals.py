@@ -13,6 +13,9 @@
     uv run evals.py --agro --plan   las mismas, con la checklist prendida
     uv run evals.py --agro --sin-citas   las mismas, sin la célula de citas (el arm baseline)
     uv run evals.py --agro --sin-ontologia   las mismas, sin `objetivos` en el REPL (el baseline de `ontologia`)
+    uv run evals.py --agro --sesion          las mismas, con el plan de la venta sembrado en cada pregunta
+    uv run evals.py --agro --flujos          las conversaciones de `flujos.tsv`, turno a turno, sin plan
+    uv run evals.py --agro --flujos --sesion las mismas, con el plan de la venta entre turnos (el arm de `plan_de_venta`)
     uv run evals.py --openai        el mismo examen contra OpenAI
 
 El corpus es `successo-okf`, la wiki de producto de una empresa de bioinsumos:
@@ -74,6 +77,27 @@ no se lee; lo que sí se lee es aciertos, flippers, y los avisos de células.
 Va con igual y no con espacio, y no es gusto: el filtro por id se lleva todo
 argumento que no empiece con guion, así que `--repeats 3` leería `3` como id de
 caso y correría cero casos.
+
+# Flujos
+
+Una pregunta suelta no mide una venta. La venta es "tengo una plaga en el
+tomate", "mosca blanca", "dos manzanas": tres turnos donde el primero no tiene
+respuesta sino pregunta, el segundo recién puede buscar, y el tercero depende de
+que el agente recuerde el producto del segundo. `flujos.tsv` trae esas
+conversaciones, una fila por turno, con lo que cada turno tiene que citar. Y un
+valor nuevo en `paginas`, `pregunta`, para el turno cuya respuesta correcta es
+preguntarle algo al cliente: se califica por el signo de pregunta, que es un
+piso y se dice.
+
+Un flujo corre como corre `agro.py`: un workspace por conversación, la historia
+en el primer mensaje, y con `--sesion` el canal `course` sembrado al principio y
+arrastrado turno a turno. Lo que sale es un `Corrida` por turno, con el id
+`flujo:n`, así que `resumir` los cuenta igual que a las preguntas sueltas y el
+reporte agrega, por flujo, cuántas conversaciones acertaron todos sus turnos.
+
+La historia que viaja es la que vio el cliente (`agro.final`), no la cruda: si
+un turno salió como "no pude revisar el catálogo", el siguiente pregunta sobre
+eso. Lo que se califica sigue siendo el texto crudo.
 """
 
 from __future__ import annotations
@@ -83,13 +107,13 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 import agro
-from catalejo.core import Cell, Log, Message, Role
+from catalejo.core import Cell, Log, Message, PlanOp, Role, proyectar
 from catalejo.llm import Provider
 from catalejo.rlm import Contenedor, Handle, Repl, Workspace, drive, inventada, recurse, rutas
 
@@ -103,6 +127,10 @@ CITA = (
 )
 
 
+PREGUNTA = "pregunta"
+"""En `paginas`: la respuesta correcta de este turno es preguntarle algo al cliente."""
+
+
 @dataclass(frozen=True, slots=True)
 class Caso:
     id: str
@@ -112,16 +140,47 @@ class Caso:
     criterio: str
 
 
-def casos(tsv: str) -> list[Caso]:
-    filas = (BUNDLE / "evals" / tsv).read_text().splitlines()
+def esperadas(paginas: str) -> tuple[str, ...]:
+    """La columna `paginas` como tupla: vacía es `ninguna`, `pregunta` queda tal cual."""
+    return () if paginas.strip() == "ninguna" else tuple(paginas.split())
+
+
+def filas(tsv: str) -> list[list[str]]:
     out = []
-    for fila in filas:
-        if not fila.strip() or fila.startswith("#"):
-            continue
-        id_, pregunta, paginas, seccion, criterio = fila.split("\t")
-        esperadas = () if paginas.strip() == "ninguna" else tuple(paginas.split())
-        out.append(Caso(id_, pregunta, esperadas, seccion, criterio))
+    for fila in (BUNDLE / "evals" / tsv).read_text().splitlines():
+        if fila.strip() and not fila.startswith("#"):
+            out.append(fila.split("\t"))
     return out
+
+
+def casos(tsv: str) -> list[Caso]:
+    out = []
+    for id_, pregunta, paginas, seccion, criterio in filas(tsv):
+        out.append(Caso(id_, pregunta, esperadas(paginas), seccion, criterio))
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class Flujo:
+    """Una conversación: sus turnos en orden, cada uno un `Caso` con id `flujo:n`."""
+
+    id: str
+    turnos: tuple[Caso, ...]
+
+
+def flujos(tsv: str) -> list[Flujo]:
+    """`flujos.tsv`: una fila por turno, con el flujo adelante y el número del turno.
+
+    El número está en el archivo para que una fila se lea sola, y se verifica:
+    un turno 3 sin turno 2 es un error del TSV, no una conversación corta.
+    """
+    por_flujo: dict[str, list[Caso]] = {}
+    for flujo, turno, pregunta, paginas, seccion, criterio in filas(tsv):
+        vistos = por_flujo.setdefault(flujo, [])
+        if turno != str(len(vistos) + 1):
+            raise SystemExit(f"{tsv}: el flujo {flujo} tiene el turno {turno} después de {len(vistos)}")
+        vistos.append(Caso(f"{flujo}:{turno}", pregunta, esperadas(paginas), seccion, criterio))
+    return [Flujo(id_, tuple(turnos)) for id_, turnos in por_flujo.items()]
 
 
 def corpus() -> str:
@@ -192,19 +251,32 @@ def wiki(
     return drive(modelo, h, ws, keep_recent=6, max_steps=12, budget=120_000), ws
 
 
+Course = tuple[PlanOp, ...]
+Turno = Callable[[Cell, Repl, str, agro.Historia, Course | None], Awaitable[Log]]
+"""Un turno: el agente, su workspace, la pregunta, lo hablado y la venta hasta acá."""
+
+
 @dataclass(frozen=True, slots=True)
 class Montaje:
     """Quién contesta el examen, sobre qué corpus y con qué preguntas.
 
     Existe para que el eval agronómico corra el agente de `agro.py` y no una
     imitación. Un montaje trae el TSV, el corpus, cómo se arma el agente y cómo
-    se redacta el pedido, que es lo único que cambia entre los dos.
+    se corre un turno, que es lo único que cambia entre los dos: el de la wiki
+    pega el contrato de cita y llama al agente; el de agro es `agro.turno`, con
+    la historia y el canal `course` adentro, que es lo que hace que un flujo
+    corra igual que una sesión en la terminal.
+
+    `sesion` dice si el turno arranca con la venta sembrada (`course=()`) o sin
+    venta (`None`). Lo sabe el montaje y no el que corre, porque es el mismo
+    dato con el que se armó el agente.
     """
 
     tsv: str
     corpus: Callable[[], str]
     montar: Callable[[str, Provider], tuple[Cell, Repl]]
-    pedir: Callable[[str], str]
+    turno: Turno
+    sesion: bool = False
 
 
 def montaje(argv: list[str]) -> Montaje:
@@ -216,6 +288,10 @@ def montaje(argv: list[str]) -> Montaje:
     una mejora del motor que se prenda en todas partes, es un cableado de un
     agente.
 
+    `--sesion` es la otra palanca de `agro.py`, y la misma regla: la semilla de
+    la venta es del dominio. Con `--flujos` el TSV es el de las conversaciones,
+    y solo existe para agro, porque una venta es del asesor y no de la wiki.
+
     `--contenedor` es lo contrario: el mismo arm con otro motor abajo, y entra
     en los dos montajes. `--un-paso` también entra en los dos, y ese sí es otro
     arm: cambia lo que `grep` devuelve y lo que la nota de herramientas dice.
@@ -224,31 +300,44 @@ def montaje(argv: list[str]) -> Montaje:
     dos_pasos = "--un-paso" not in argv
     if "--agro" in argv:
         plan = "--plan" in argv
+        sesion = "--sesion" in argv
+        if plan and sesion:
+            raise SystemExit("--plan y --sesion no van juntos: comparten `steps` y el colector")
         citas = "--sin-citas" not in argv
         ontologia = "--sin-ontologia" not in argv
         return Montaje(
-            tsv="agro.tsv",
+            tsv="flujos.tsv" if "--flujos" in argv else "agro.tsv",
             corpus=agro.corpus,
             montar=lambda texto, modelo: agro.armar(
                 texto,
                 modelo,
                 ver=False,
                 plan=plan,
+                sesion=sesion,
                 citas=citas,
                 ontologia=ontologia,
                 contenedor=contenedor,
                 dos_pasos=dos_pasos,
             ),
-            pedir=lambda pregunta: agro.pedido(pregunta, (), plan=plan, ontologia=ontologia),
+            turno=lambda agente, ws, pregunta, historia, course: agro.turno(
+                agente, ws, pregunta, historia, plan=plan, course=course, ontologia=ontologia
+            ),
+            sesion=sesion,
         )
+    if "--flujos" in argv:
+        raise SystemExit("--flujos es del montaje de agro: agregá --agro")
     recursivo = "--recurse" in argv
+
+    async def turno(agente: Cell, ws: Repl, pregunta: str, historia: agro.Historia, course: Course | None) -> Log:
+        return await agente(Log(said=(Message(Role.USER, pregunta + CITA),)))
+
     return Montaje(
         tsv="preguntas.tsv",
         corpus=corpus,
         montar=lambda texto, modelo: wiki(
             texto, modelo, recursivo=recursivo, contenedor=contenedor, dos_pasos=dos_pasos
         ),
-        pedir=lambda pregunta: pregunta + CITA,
+        turno=turno,
     )
 
 
@@ -280,7 +369,7 @@ async def correr(caso: Caso, texto: str, modelo: Provider, m: Montaje) -> tuple[
     agente, ws = m.montar(texto, modelo)
     t0 = time.monotonic()
     try:
-        out = await agente(Log(said=(Message(Role.USER, m.pedir(caso.pregunta)),)))
+        out = await m.turno(agente, ws, caso.pregunta, (), () if m.sesion else None)
     finally:
         ws.cerrar()
     delegadas = ws.bridge.calls if ws.bridge is not None else 0
@@ -307,8 +396,14 @@ def acierta(caso: Caso, texto: str) -> bool:
 
     Con `ninguna` el acierto es decir que no hay: se acepta la cita explícita o
     que no haya citado ninguna página de producto inventada.
+
+    Con `pregunta` el acierto es haber preguntado, y se lee por el signo. Es un
+    piso: una respuesta que recomienda tres productos y cierra con "¿cuál
+    querés?" pasa, y el criterio de la fila es el que dice si eso estuvo bien.
     """
     bajo = texto.lower()
+    if caso.paginas == (PREGUNTA,):
+        return "?" in texto
     if not caso.paginas:
         return "ninguna" in bajo
     return any(p.lower() in bajo for p in caso.paginas)
@@ -330,6 +425,8 @@ class Corrida:
     ok: bool
     fantasmas: tuple[str, ...] = ()
     delegadas: int = 0
+    venta: str = ""
+    """Con `--sesion`, dónde quedó la venta después de este turno (`agro.estado_venta`)."""
 
     @property
     def perdida(self) -> bool:
@@ -444,6 +541,84 @@ def resumir(corridas: Sequence[Corrida], n: int) -> Resumen:
     )
 
 
+def calificar(
+    caso: Caso,
+    vuelta: int,
+    out: Log,
+    seg: float,
+    delegadas: int,
+    reales: frozenset[str],
+    venta: str = "",
+) -> Corrida:
+    """El `Corrida` de un turno: la respuesta cruda, si acertó y qué inventó."""
+    respuesta = final(out)
+    return Corrida(
+        caso=caso,
+        vuelta=vuelta,
+        out=out,
+        respuesta=respuesta,
+        seg=seg,
+        ok=acierta(caso, respuesta),
+        fantasmas=inventada(respuesta, reales),
+        delegadas=delegadas,
+        venta=venta,
+    )
+
+
+async def correr_flujo(
+    flujo: Flujo, vuelta: int, texto: str, modelo: Provider, m: Montaje, reales: frozenset[str]
+) -> list[Corrida]:
+    """Una conversación entera, como la corre `agro.main`: un workspace, la
+    historia de a tres, y el canal `course` arrastrado si el montaje lleva venta.
+
+    Cada turno es un `Corrida` propio, con lo que ese turno gastó. Las lecturas
+    delegadas del puente son acumuladas, así que se resta lo que ya había.
+    """
+    agente, ws = m.montar(texto, modelo)
+    historia: agro.Historia = ()
+    course: Course | None = () if m.sesion else None
+    hechas: list[Corrida] = []
+    leidas = 0
+    try:
+        for caso in flujo.turnos:
+            t0 = time.monotonic()
+            out = await m.turno(agente, ws, caso.pregunta, historia, course)
+            seg = time.monotonic() - t0
+            calls = ws.bridge.calls if ws.bridge is not None else 0
+            venta = ""
+            if course is not None:
+                course = (*course, *out.course)
+                venta = agro.estado_venta(proyectar(course))
+            hechas.append(calificar(caso, vuelta, out, seg, calls - leidas, reales, venta))
+            leidas = calls
+            vista = agro.final(out, fundar=course is None or bool(out.steps))
+            historia = (*historia, (caso.pregunta, vista))[-3:]
+    finally:
+        ws.cerrar()
+    return hechas
+
+
+def enteros(corridas: Sequence[Corrida]) -> dict[str, tuple[int, int]]:
+    """Por flujo: conversaciones que acertaron TODOS sus turnos, sobre las vivas.
+
+    Una conversación es (flujo, vuelta). Está viva si ningún turno perdió la
+    muestra, y entera si todos acertaron. Es la cuenta que a un vendedor le
+    importa: una venta con el turno 2 bien y el 3 mal no cerró.
+    """
+    por_charla: dict[tuple[str, int], list[Corrida]] = {}
+    for c in corridas:
+        flujo = c.caso.id.rsplit(":", 1)[0]
+        por_charla.setdefault((flujo, c.vuelta), []).append(c)
+    cuenta: dict[str, list[int]] = {}
+    for (flujo, _), turnos in por_charla.items():
+        viva = not any(c.perdida for c in turnos)
+        entera = viva and all(c.ok for c in turnos)
+        acumulado = cuenta.setdefault(flujo, [0, 0])
+        acumulado[0] += entera
+        acumulado[1] += viva
+    return {flujo: (a, b) for flujo, (a, b) in cuenta.items()}
+
+
 def sha() -> str:
     """El commit de esta corrida, con `-dirty` si el árbol no estaba limpio."""
     try:
@@ -482,56 +657,78 @@ def fila(r: Resumen) -> str:
     )
 
 
+def linea(c: Corrida, n: int) -> str:
+    """Una corrida en una línea del reporte, como va saliendo."""
+    marca = "···" if c.perdida else ("ok " if c.ok else "MAL")
+    cual = f" #{c.vuelta + 1}" if n > 1 else ""
+    venta = f"  {c.venta}" if c.venta else ""
+    return (
+        f"  {marca} {c.caso.id:24s}{cual} {c.out.spent:>7,} tok  "
+        f"{c.seg:5.1f}s  {len(c.out.said):2d} turnos{venta}"
+    )
+
+
+def transcripcion(out: Log) -> None:
+    for msg in out.said:
+        quien = {Role.USER: "repl", Role.ASSISTANT: "modelo"}.get(msg.role, msg.role.value)
+        print(f"\n\033[1m[{quien}]\033[0m {msg.text.strip()[:2000]}")
+
+
 async def main(argv: list[str]) -> None:
     n = repeticiones(argv)
     m = montaje(argv)
     pedidos = [a for a in argv if not a.startswith("-")]
-    todos = casos(m.tsv)
-    corridas = [c for c in todos if c.id in pedidos] if pedidos else todos
-    if not corridas:
-        print(f"no hay caso {pedidos}. Hay: {', '.join(c.id for c in todos)}")
+    charlas = m.tsv == "flujos.tsv"
+    todos: Sequence[Caso | Flujo] = flujos(m.tsv) if charlas else casos(m.tsv)
+    elegidos = [c for c in todos if c.id in pedidos] if pedidos else list(todos)
+    if not elegidos:
+        que = "flujo" if charlas else "caso"
+        print(f"no hay {que} {pedidos}. Hay: {', '.join(c.id for c in todos)}")
         return
+    corridas: list[Caso] = [
+        t for e in elegidos for t in (e.turnos if isinstance(e, Flujo) else (e,))
+    ]
 
     texto = m.corpus()
     reales = rutas(texto)
     modelo = agro.proveedor(argv)
+    cuantos = f"{len(elegidos)} flujos, {len(corridas)} turnos" if charlas else f"{len(corridas)} casos"
     print(
         f"corpus: {len(texto):,} caracteres (~{len(texto) // 4:,} tokens), "
-        f"{len(corridas)} casos, n={n} · {modelo.model}"
+        f"{cuantos}, n={n} · {modelo.model}{' · con plan de venta' if m.sesion else ''}"
     )
     sem = asyncio.Semaphore(4)
-    solo = len(corridas) == 1 and n == 1
+    solo = len(elegidos) == 1 and n == 1
 
-    async def uno(caso: Caso, vuelta: int) -> Corrida:
+    async def uno(caso: Caso, vuelta: int) -> list[Corrida]:
         async with sem:
             out, delegadas, seg = await correr(caso, texto, modelo, m)
-        respuesta = final(out)
-        c = Corrida(
-            caso=caso,
-            vuelta=vuelta,
-            out=out,
-            respuesta=respuesta,
-            seg=seg,
-            ok=acierta(caso, respuesta),
-            fantasmas=inventada(respuesta, reales),
-            delegadas=delegadas,
-        )
-        marca = "···" if c.perdida else ("ok " if c.ok else "MAL")
-        cual = f" #{vuelta + 1}" if n > 1 else ""
-        print(
-            f"  {marca} {caso.id:22s}{cual} {out.spent:>7,} tok  "
-            f"{seg:5.1f}s  {len(out.said):2d} turnos"
-        )
+        c = calificar(caso, vuelta, out, seg, delegadas, reales)
+        print(linea(c, n))
         if solo:
-            for msg in out.said:
-                quien = {Role.USER: "repl", Role.ASSISTANT: "modelo"}.get(msg.role, msg.role.value)
-                print(f"\n\033[1m[{quien}]\033[0m {msg.text.strip()[:2000]}")
-        return c
+            transcripcion(out)
+        return [c]
+
+    async def charla(flujo: Flujo, vuelta: int) -> list[Corrida]:
+        async with sem:
+            turnos = await correr_flujo(flujo, vuelta, texto, modelo, m, reales)
+        for c in turnos:
+            print(linea(c, n))
+            if solo:
+                transcripcion(c.out)
+        return turnos
 
     try:
-        hechas = await asyncio.gather(*(uno(c, i) for c in corridas for i in range(n)))
+        grupos = await asyncio.gather(
+            *(
+                (charla(e, i) if isinstance(e, Flujo) else uno(e, i))
+                for e in elegidos
+                for i in range(n)
+            )
+        )
     finally:
         await modelo.aclose()
+    hechas = [c for grupo in grupos for c in grupo]
     orden = {c.id: i for i, c in enumerate(corridas)}
     filas = sorted(hechas, key=lambda c: (orden[c.caso.id], c.vuelta))
     r = resumir(filas, n)
@@ -549,6 +746,10 @@ async def main(argv: list[str]) -> None:
     if r.perdidas:
         print(f"  muestras perdidas         {r.perdidas}  (turno vacío, fuera del denominador)")
     print(f"  citó una ruta inexistente {len(r.fantasmas)}/{r.casos}  {r.fantasmas or ''}")
+    if charlas:
+        for flujo, (ent, vivas) in enteros(filas).items():
+            gasto = sum(c.out.spent for c in filas if c.caso.id.startswith(f"{flujo}:")) // max(vivas, 1)
+            print(f"  {flujo:26s}{ent}/{vivas} conversaciones enteras, {gasto:,} tok por conversación")
     print(f"  tokens                    {r.spent:,} medios por corrida, {r.gastado:,} facturados")
     if r.delegadas:
         print(f"  lecturas delegadas        {r.delegadas}")

@@ -8,16 +8,24 @@ nota, porque lo que reporta se parece a un resultado.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from catalejo.core import Fail, Log, Message, Role
-from catalejo.core import Conversation
-from catalejo.llm import Reply
-from catalejo.rlm import HERRAMIENTAS, HERRAMIENTAS_UN_PASO, Contenedor, Workspace
+import evals
+from agro import SIN_CONSULTAR, corpus
+from catalejo.core import Conversation, Fail, Log, Message, Role
+from catalejo.llm import Reply, Stub
+from catalejo.rlm import HERRAMIENTAS, HERRAMIENTAS_UN_PASO, Contenedor, Workspace, rutas
 from evals import (
+    PREGUNTA,
     Caso,
     Corrida,
+    Flujo,
     acierta,
+    correr_flujo,
+    enteros,
+    flujos,
     montaje,
     repeticiones,
     resumir,
@@ -174,6 +182,123 @@ class TestAcierta:
 
         assert acierta(vacio, "no está en el catálogo.\nFUENTE: ninguna")
         assert not acierta(vacio, "usá productos/inventado.md")
+
+    def test_con_pregunta_el_acierto_es_preguntar(self) -> None:
+        """Es un piso: se lee por el signo, y el criterio dice qué había que preguntar."""
+        turno = Caso("f:1", "tengo una plaga", (PREGUNTA,), "·", "preguntar cuál")
+
+        assert acierta(turno, "¿Qué plaga ves en el tomate?")
+        assert not acierta(turno, "Usá Metaveria.\nFUENTE: productos/metaveria-40-ew.md")
+
+
+class TestFlujos:
+    def test_una_fila_por_turno_con_el_id_flujo_dos_puntos_n(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / "evals").mkdir()
+        (tmp_path / "evals" / "f.tsv").write_text(
+            "# flujo\tturno\tpregunta\tpaginas\tseccion\tcriterio\n"
+            "venta\t1\thola\tpregunta\t·\tpreguntar\n"
+            "venta\t2\tmosca blanca\tproductos/m.md\t# Ficha\tdosis\n"
+            "otra\t1\tzompopo\tninguna\t·\tno hay\n"
+        )
+        monkeypatch.setattr(evals, "BUNDLE", tmp_path)
+
+        fs = flujos("f.tsv")
+
+        assert [f.id for f in fs] == ["venta", "otra"]
+        assert [t.id for t in fs[0].turnos] == ["venta:1", "venta:2"]
+        assert fs[0].turnos[0].paginas == (PREGUNTA,)
+        assert fs[0].turnos[1].paginas == ("productos/m.md",)
+        assert fs[1].turnos[0].paginas == ()
+
+    def test_un_turno_salteado_es_un_error_del_tsv(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / "evals").mkdir()
+        (tmp_path / "evals" / "f.tsv").write_text("venta\t1\thola\tpregunta\t·\tx\nventa\t3\tya\tninguna\t·\tx\n")
+        monkeypatch.setattr(evals, "BUNDLE", tmp_path)
+
+        with pytest.raises(SystemExit, match="turno 3 después de 1"):
+            flujos("f.tsv")
+
+    def test_flujos_es_del_montaje_de_agro(self) -> None:
+        assert montaje(["--agro", "--flujos"]).tsv == "flujos.tsv"
+        assert montaje(["--agro", "--flujos", "--sesion"]).sesion
+        assert not montaje(["--agro"]).sesion
+        with pytest.raises(SystemExit, match="--agro"):
+            montaje(["--flujos"])
+        with pytest.raises(SystemExit, match="no van juntos"):
+            montaje(["--agro", "--plan", "--sesion"])
+
+    def test_las_conversaciones_enteras_van_por_flujo(self) -> None:
+        """Una venta con el turno 2 bien y el 3 mal no cerró; una muestra perdida no cuenta."""
+        t1 = Caso("v:1", "?", (PREGUNTA,), "·", "")
+        t2 = Caso("v:2", "?", ("productos/m.md",), "·", "")
+        vuelta_buena = [corrida(t1, vuelta=0), corrida(t2, vuelta=0)]
+        vuelta_mala = [corrida(t1, vuelta=1), corrida(t2, vuelta=1, ok=False)]
+        vuelta_perdida = [corrida(t1, vuelta=2, fails=(VACIO,)), corrida(t2, vuelta=2)]
+
+        assert enteros([*vuelta_buena, *vuelta_mala, *vuelta_perdida]) == {"v": (1, 2)}
+
+
+class Guion(Stub):
+    model = "guion"
+
+    async def aclose(self) -> None:
+        pass
+
+
+class TestCorrerFlujo:
+    """Un flujo corre como una sesión de `agro.py`: un workspace, la historia y la venta."""
+
+    async def test_tres_turnos_con_venta(self) -> None:
+        modelo = Guion(
+            "```python\nprint(len(productos))\n```",
+            "¿Qué plaga ves en el tomate?",
+            "```python\nprint(read(catalogo, 'productos/metaveria-40-ew.md'))\n```",
+            "Metaveria 40 EW. ¿Cuántas manzanas?\nFUENTE: productos/metaveria-40-ew.md",
+            "```python\nprint(grep(catalogo, 'L/Mz', doc='metaveria'))\n```",
+            "Para 2 manzanas van 1.4 a 3 L.\nFUENTE: productos/metaveria-40-ew.md",
+        )
+        flujo = Flujo(
+            "v",
+            (
+                Caso("v:1", "tengo una plaga en el tomate", (PREGUNTA,), "·", ""),
+                Caso("v:2", "mosca blanca", ("productos/metaveria-40-ew.md",), "·", ""),
+                Caso("v:3", "dos manzanas", ("productos/metaveria-40-ew.md",), "·", ""),
+            ),
+        )
+        texto = corpus()
+        m = montaje(["--agro", "--flujos", "--sesion"])
+
+        turnos = await correr_flujo(flujo, 0, texto, modelo, m, rutas(texto))
+
+        assert [c.ok for c in turnos] == [True, True, True]
+        assert [c.venta for c in turnos] == [
+            "venta 1/7: sigue `plaga`",
+            "venta 3/7: sigue `cantidad`",
+            "venta 4/7: sigue `dudas`",
+        ]
+        assert not any(c.out.fails for c in turnos)
+        assert enteros(turnos) == {"v": (1, 1)}
+        segundo = "\n".join(m_.text for m_ in modelo.visto[2])
+        assert "P: tengo una plaga en el tomate\nR: ¿Qué plaga ves en el tomate?" in segundo
+        assert "[x] producto" in segundo and "[x] plaga" in segundo, "la venta va dibujada con lo que el cliente acaba de decir"
+
+    async def test_la_historia_lleva_lo_que_vio_el_cliente(self) -> None:
+        """El turno 1 contestó sin consultar; el cliente vio el "no pude" y el turno 2 lo lleva."""
+        modelo = Guion("Usá Metaveria.", "Usá Metaveria, en serio.", "¿Cuál plaga?")
+        flujo = Flujo(
+            "v",
+            (
+                Caso("v:1", "tengo mosca blanca", ("productos/metaveria-40-ew.md",), "·", ""),
+                Caso("v:2", "en tomate", (PREGUNTA,), "·", ""),
+            ),
+        )
+        texto = corpus()
+
+        turnos = await correr_flujo(flujo, 0, texto, modelo, montaje(["--agro", "--flujos"]), rutas(texto))
+
+        assert turnos[0].respuesta == "Usá Metaveria, en serio."
+        assert not turnos[0].ok and turnos[0].venta == ""
+        assert f"R: {SIN_CONSULTAR}" in "\n".join(m_.text for m_ in modelo.visto[2])
 
 
 class TestRepeticiones:
