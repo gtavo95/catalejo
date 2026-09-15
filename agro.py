@@ -802,7 +802,9 @@ async def responder(
     Solo viaja la prosa de las respuestas anteriores. Si arrastrara el Log entero,
     `reads` vendría en más de cero desde el primer paso y `grounded` no volvería a
     disparar en toda la sesión: la pregunta cinco podría contestarse de memoria
-    amparada en el grep de la pregunta uno.
+    amparada en el grep de la pregunta uno. El plan de `--plan` va en el mismo
+    Log, así que es un plan del turno y no de la conversación: cada pregunta
+    arranca con la semilla entera en `[ ]` (ver `celulas/planner.py`).
 
     `notas` arranca vacía por la misma razón: el workspace vive toda la sesión y
     una nota de la pregunta anterior al pie de las salidas de esta sería un dato

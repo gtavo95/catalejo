@@ -11,6 +11,21 @@ Dicho al revés, que es como conviene leerlo: el turno termina cuando el predica
 dice que sí, y eso se consigue LEVANTANDO el veto, no emitiendo un DONE. Por eso
 esto no agrega ninguna forma nueva de terminar un turno.
 
+# Es el plan de un turno, no de la conversación
+
+Los ops viven en el canal `steps` del Log, y el Log arranca limpio en cada
+pregunta (`agro.responder`). La semilla se vuelve a emitir entera, con todo en
+`[ ]`, y el plan se cierra adentro del `loop` de esa pregunta o no se cierra.
+Nada de lo que cerró la pregunta anterior cuenta para esta, por la misma razón
+por la que `grounded` no arrastra `reads`: un `cito_la_fuente` cumplido en la
+pregunta uno cerraría `fuente` en la cinco sin que la cinco cite nada.
+
+Un plan que atraviese turnos usaría el mismo fold: los `steps` con los que salió
+un turno son la semilla del siguiente, y por la ley del fold el plan de la
+conversación es el pliegue de todos. Lo que no puede reusar es el veto de abajo:
+un plan de conversación abierto al final de un turno es lo normal, no un turno
+mal terminado. Eso hoy no existe.
+
 # Qué cuesta
 
 Un mensaje `[plan] estado:` por paso en el que el plan se movió. Los pasos en los
