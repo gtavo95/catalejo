@@ -2,8 +2,19 @@
 
 from catalejo.core import ZERO, Log, Message, PlanOp, Role, Status, merge, proyectar, then
 from catalejo.llm import Stub
-from catalejo.rlm import Handle, Registro, Verbos, Workspace, executor, planner, worker
-from catalejo.rlm.celulas.planner import ESTADO, FALTAN, INCOMPLETO
+from catalejo.rlm import (
+    Handle,
+    Registro,
+    Verbos,
+    Workspace,
+    avanzar,
+    derivar,
+    executor,
+    exigir,
+    planner,
+    worker,
+)
+from catalejo.rlm.celulas.planner import ESTADO, FALTAN, INCOMPLETO, render_plan
 
 PAYLOAD = "manual\ngarantia: 24 meses\nfin"
 
@@ -163,3 +174,210 @@ class TestLoQueElModeloPropone:
 
         assert proyectar(out.steps)[0].status == "todo"
         assert "lo cierro yo" in out.said[0].text
+
+
+class TestAvanzar:
+    async def test_no_vota_ni_con_prosa_y_pasos_abiertos(self) -> None:
+        out = await avanzar(Verbos(), {}, semilla=SEMILLA)(Log(said=(dicho("de memoria"),)))
+
+        assert out.vote is Status.QUIET
+        assert out.steps == SEMILLA
+        assert out.said == ()
+
+    async def test_con_el_canal_sembrado_por_el_host_no_reemite_la_semilla(self) -> None:
+        """Así entra el plan de la conversación con su historia en cada turno."""
+        seen = Log(said=(dicho(bloque("x=1")),), steps=SEMILLA)
+
+        assert await avanzar(Verbos(), {}, semilla=SEMILLA)(seen) == ZERO
+
+    async def test_sobre_course_proyecta_y_emite_en_course(self) -> None:
+        semilla = (PlanOp("add_step", "plaga", completes_when="leyo"),)
+        seen = Log(said=(dicho(bloque("x=1")),), reads=1)
+
+        out = await avanzar(Verbos(), LEYO, canal="course", semilla=semilla)(seen)
+
+        assert out.steps == ()
+        assert proyectar(out.course)[0].status == "done"
+
+    async def test_con_etiqueta_toma_lo_suyo_y_deja_el_resto(self) -> None:
+        v = Verbos()
+        v.mark("plaga", "active")
+        v.mark("buscar", "active")
+        v.add_step("garantia", "preguntar", en="venta")
+        v.add_step("sintomas", "qué ve", padre="plaga", en="diagnostico")
+        v.add_step("plaga", "identificar la plaga")
+        v.add_step("sintoma", "qué ve", padre="plaga")
+        v.mark("sintoma", "active")
+        seen = Log(
+            said=(dicho(bloque("x=1")),),
+            course=(PlanOp("add_step", "plaga"),),
+            steps=(PlanOp("add_step", "buscar"),),
+        )
+
+        venta = await avanzar(v, {}, canal="course", etiqueta="venta")(seen)
+        turno = await avanzar(v, {})(merge(seen, venta))
+
+        assert [op.id for op in venta.course] == ["plaga", "garantia", "sintomas", "sintoma", "sintoma"]
+        assert [op.id for op in turno.steps] == ["buscar"]
+        assert v.tomar() == ()
+        assert "rechazado add_step(\"plaga\"" in venta.said[0].text
+
+    async def test_sin_dibujar_solo_habla_para_rechazar(self) -> None:
+        v = Verbos()
+        seen = Log(said=(dicho(bloque("x=1")),), course=(PlanOp("add_step", "plaga"),))
+
+        callado = await avanzar(v, {}, canal="course", etiqueta="venta", dibuja=False)(seen)
+        v.skip("plaga")
+        rechaza = await avanzar(v, {}, canal="course", flex="firme", etiqueta="venta", dibuja=False)(seen)
+
+        assert callado == ZERO
+        assert rechaza.said[0].text.startswith("rechazado skip") and rechaza.course == ()
+
+
+class TestExigir:
+    async def test_veta_la_prosa_con_pasos_abiertos(self) -> None:
+        out = await exigir()(Log(said=(dicho("de memoria"),), steps=SEMILLA))
+
+        assert out.vote is Status.CONTINUE
+        assert FALTAN in out.said[0].text
+
+    async def test_con_el_plan_completo_no_dice_nada(self) -> None:
+        seen = Log(said=(dicho("listo"),), steps=(*SEMILLA, PlanOp("mark", "buscar", status="done")))
+
+        assert await exigir()(seen) == ZERO
+
+    async def test_una_checklist_vacia_no_exige_nada(self) -> None:
+        """La diferencia con `completo`: un turno sin checklist termina cuando el
+        modelo lo dice, y ese turno existe (la hoja `plaga` no exige nada)."""
+        assert await exigir()(Log(said=(dicho("¿qué plaga ves?"),))) == ZERO
+
+    async def test_ya_avisado_anota_incompleto(self) -> None:
+        seen = avisado(Log(said=(dicho("de memoria"),), steps=SEMILLA))
+        seen = merge(seen, Log(said=(dicho("igual"),)))
+
+        out = await exigir()(seen)
+
+        assert out.fails == (INCOMPLETO,) and out.vote is Status.QUIET
+
+    async def test_sobre_codigo_no_opina(self) -> None:
+        assert await exigir()(Log(said=(dicho(bloque("x=1")),), steps=SEMILLA)) == ZERO
+
+
+class TestPlannerEsLosDos:
+    async def test_planner_es_then_de_avanzar_y_exigir(self) -> None:
+        semilla = (PlanOp("add_step", "buscar", completes_when="leyo"),)
+        for log in (
+            Log(said=(dicho("de memoria"),), steps=semilla),
+            Log(said=(dicho(bloque("x=1")),), reads=1),
+        ):
+            a = await avanzar(Verbos(), LEYO, semilla=semilla)(log)
+            e = await exigir()(merge(log, a))
+
+            assert await planner(Verbos(), LEYO, semilla=semilla)(log) == merge(a, e)
+
+
+VENTA = (
+    PlanOp("add_step", "diagnostico"),
+    PlanOp("add_step", "plaga", padre="diagnostico", completes_when="dijo"),
+    PlanOp("add_step", "producto", padre="diagnostico", completes_when="leyo", exige=("buscar", "fuente")),
+    PlanOp("add_step", "dosis", padre="diagnostico", exige=("dosis", "fuente")),
+)
+
+PASOS = {
+    "buscar": PlanOp("add_step", "buscar", "encontrar", completes_when="leyo"),
+    "dosis": PlanOp("add_step", "dosis", "traer la dosis"),
+    "fuente": PlanOp("add_step", "fuente", "citar"),
+}
+
+
+class TestDerivar:
+    async def test_con_la_hoja_activa_sin_exigencia_no_siembra_nada(self) -> None:
+        assert await derivar(PASOS)(Log(course=VENTA)) == ZERO
+
+    async def test_siembra_lo_que_exige_la_hoja_activa_y_lo_dibuja(self) -> None:
+        seen = Log(course=(*VENTA, PlanOp("mark", "plaga", status="done")))
+
+        out = await derivar(PASOS)(seen)
+
+        assert out.steps == (PASOS["buscar"], PASOS["fuente"])
+        assert out.said[0].text.startswith(ESTADO) and "buscar" in out.said[0].text
+
+    async def test_no_vuelve_a_sembrar_lo_que_ya_esta_ni_lo_saltado(self) -> None:
+        seen = Log(
+            course=(*VENTA, PlanOp("mark", "plaga", status="done")),
+            steps=(PASOS["buscar"], PASOS["fuente"], PlanOp("skip", "fuente")),
+        )
+
+        assert await derivar(PASOS)(seen) == ZERO
+
+    async def test_cuando_la_hoja_cambia_a_mitad_del_turno_la_checklist_crece(self) -> None:
+        """producto cerró con el grep: ahora el turno exige la dosis, en este turno."""
+        seen = Log(
+            course=(*VENTA, PlanOp("mark", "plaga", status="done"), PlanOp("mark", "producto", status="done")),
+            steps=(PASOS["buscar"], PASOS["fuente"]),
+        )
+
+        out = await derivar(PASOS)(seen)
+
+        assert out.steps == (PASOS["dosis"],)
+
+    async def test_un_id_fuera_del_catalogo_es_un_fail(self) -> None:
+        raro = (PlanOp("add_step", "x", exige=("nadie",)),)
+
+        out = await derivar(PASOS)(Log(course=raro))
+
+        assert out.steps == () and "nadie" in out.fails[0].reason
+
+
+class TestElPasoDeLaVenta:
+    """Las cuatro células juntas, un paso a la vez, sin modelo."""
+
+    def paso(self, v: Verbos) -> object:
+        registro: Registro = {"leyo": lambda log: log.reads > 0, "dijo": lambda log: "mosca" in log.said[0].text}
+        return then(
+            avanzar(v, registro, canal="course", semilla=VENTA, etiqueta="venta"),
+            derivar(PASOS),
+            avanzar(v, registro),
+            exigir(),
+        )
+
+    async def test_turno_uno_pregunta_sin_checklist(self) -> None:
+        seen = Log(said=(dicho("tengo una plaga", Role.USER), dicho("¿qué plaga ves?")))
+
+        out = await self.paso(Verbos())(seen)  # type: ignore[operator]
+
+        assert out.vote is Status.QUIET
+        assert out.steps == ()
+        assert proyectar(out.course)[1].status == "todo"
+
+    async def test_turno_dos_cierra_plaga_y_exige_buscar(self) -> None:
+        seen = Log(
+            said=(dicho("mosca blanca", Role.USER), dicho("Metaveria sirve. ¿cuántas manzanas?")),
+            course=VENTA,
+        )
+
+        out = await self.paso(Verbos())(seen)  # type: ignore[operator]
+
+        assert proyectar(merge(seen, out).course)[1].status == "done"
+        assert [op.id for op in out.steps] == ["buscar", "fuente"]
+        assert out.vote is Status.CONTINUE and FALTAN in out.said[-1].text
+
+    async def test_el_fold_entre_turnos_no_recierra(self) -> None:
+        previos = (*VENTA, PlanOp("mark", "plaga", status="done"))
+        seen = Log(said=(dicho("dos", Role.USER), dicho(bloque("x=1"))), course=previos, reads=1)
+
+        out = await self.paso(Verbos())(seen)  # type: ignore[operator]
+
+        assert [op.id for op in out.course] == ["producto"]
+        assert "plaga" not in [op.id for op in out.course]
+
+
+class TestRenderConEtapas:
+    def test_sangra_las_hojas_y_cierra_la_etapa_por_sus_hijos(self) -> None:
+        plan = proyectar((*VENTA, PlanOp("mark", "plaga", status="done"), PlanOp("skip", "producto"), PlanOp("skip", "dosis")))
+
+        texto = render_plan(plan, "[venta] estado:")
+
+        assert texto.splitlines()[0] == "[venta] estado:"
+        assert texto.splitlines()[1].startswith("[x] diagnostico")
+        assert texto.splitlines()[2].startswith("    [x] plaga")

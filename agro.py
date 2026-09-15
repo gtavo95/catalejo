@@ -5,6 +5,7 @@
     uv run agro.py --ver "..."           además, la transcripción completa
     uv run agro.py --openai "..."        el mismo agente contra OpenAI
     uv run agro.py --plan "..."          además, la checklist del turno
+    uv run agro.py --sesion              además, el plan de la venta, que dura la conversación
     uv run agro.py --sin-citas "..."     sin la célula que verifica las FUENTE:
     uv run agro.py --sin-ontologia "..." sin `objetivos` en el REPL, la plaga solo por grep
     uv run agro.py --sin-notas "..."     sin la viñeta que pide anotar (el baseline de `notas`)
@@ -64,21 +65,41 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from catalejo.core import ZERO, Cell, Log, Message, PlanOp, Role, Status, pendientes, proyectar
+from catalejo.core import (
+    ZERO,
+    Cell,
+    Log,
+    Message,
+    Plan,
+    PlanOp,
+    Role,
+    Status,
+    activa,
+    cerrado,
+    hijos,
+    pendientes,
+    proyectar,
+    then,
+)
 from catalejo.llm import Gemini, OpenAI, Provider
 from catalejo.rlm import (
     INSTRUCCIONES,
+    VERBOS,
     Handle,
     Registro,
     Repl,
     Verbos,
+    avanzar,
     citada,
+    derivar,
     drive,
+    exigir,
     planner,
     recurse,
     render_plan,
@@ -179,9 +200,14 @@ fichas que la ventana se llevó (154k en 17 turnos), y con notas no relee.
 `notas=False` (`--sin-notas`) saca la viñeta y deja la plomería inerte.
 """
 
-CONTRATO = f"""
+HABLADO = "[lo que ya hablamos en esta sesión]"
 
-Para contestar esto:
+AHORA = "[la pregunta de ahora]"
+
+CORTE = "\n\nPara contestar esto:"
+"""Las tres marcas del pedido, compartidas con `cliente()` para que no se desincronicen."""
+
+CONTRATO = f"""{CORTE}
 
 {BUSCAR}{TIPO}- Si hay producto, decí la dosis tal cual está: el número, la unidad y la base (l/ha),
   la vía de aplicación y el volumen de agua. No conviertas unidades ni promedies un
@@ -226,7 +252,7 @@ REGISTRO: Registro = {
         m.role is Role.USER and "productos/" in m.text and ".md:" in m.text for m in log.said
     ),
     "cito_la_fuente": lambda log: any(
-        m.role is Role.ASSISTANT and "FUENTE:" in m.text for m in log.said
+        m.role is Role.ASSISTANT and "FUENTE:" in m.text and "```" not in m.text for m in log.said
     ),
 }
 """Las compuertas del plan: hechos sobre el Log, no campos que el Log no tiene.
@@ -238,7 +264,9 @@ cada hit, así que dice que una LÍNEA de una ficha le pasó por delante, no que
 haya leído: es el piso que separa contestar desde el índice de contestar desde la
 ficha, y la dosis tiene que salir de la ficha. `cito_la_fuente` mira lo mismo que
 después lee `evals.citadas`, así que el requisito y la medición no se pueden
-desincronizar.
+desincronizar. Solo en prosa: en la corrida de la venta del 15 de septiembre de
+2026 el modelo cerró `fuente` con un `print("FUENTE: ...")` adentro de un bloque,
+que es texto que el cliente no ve.
 
 No hay un `sin_fallas`. Sería verdad en el paso 1, cuando todavía no falló nada,
 así que cerraría su paso antes de que el paso empiece. Una compuerta que se cumple
@@ -280,6 +308,95 @@ El modelo puede agregar los suyos con `add_step`, que es lo que `flex="acotado"`
 le permite. Lo que no puede es borrar ni reescribir estos, porque `revise` no
 existe.
 """
+
+PASOS: dict[str, PlanOp] = {op.id: op for op in SEMILLA}
+"""Los mismos cinco, por id, para que una hoja de la venta los nombre en `exige`."""
+
+VENTA = "[venta] estado:"
+
+SESION = (
+    PlanOp("add_step", "diagnostico", "diagnosticar y armar el carrito"),
+    PlanOp(
+        "add_step",
+        "plaga",
+        "saber qué cultivo y qué plaga tiene",
+        completes_when="dijo_plaga",
+        padre="diagnostico",
+    ),
+    PlanOp(
+        "add_step",
+        "producto",
+        "uno certificado para ese cultivo",
+        completes_when="consulto_el_catalogo",
+        padre="diagnostico",
+        exige=("buscar", "fuente"),
+    ),
+    PlanOp(
+        "add_step",
+        "receta",
+        "la dosis como está en la ficha",
+        completes_when="mire_una_ficha",
+        padre="diagnostico",
+        exige=("dosis", "fuente"),
+    ),
+    PlanOp(
+        "add_step",
+        "cantidad",
+        "cuánta área trata, para calcular cuánto lleva",
+        completes_when="dijo_area",
+        padre="diagnostico",
+        exige=("fuente",),
+    ),
+    PlanOp(
+        "add_step",
+        "dudas",
+        "lo que el cliente pregunte del producto",
+        padre="diagnostico",
+        exige=("fuente",),
+    ),
+    PlanOp("add_step", "pago", "método de pago"),
+    PlanOp("add_step", "medio", "link de pago o transferencia", padre="pago"),
+    PlanOp("add_step", "facturacion", "los datos de facturación"),
+    PlanOp("add_step", "datos", "nombre, identificación, dirección", padre="facturacion"),
+)
+"""El plan de la venta: tres etapas con sus partes, y en cada hoja qué le exige al turno.
+
+Va en el canal `course` y dura la conversación. La etapa 1 tiene compuertas
+porque hay hechos: dos sobre el Log del turno, que ya tenía `REGISTRO`, y dos
+sobre las palabras del cliente, `dijo_plaga` y `dijo_area`. Las etapas 2 y 3 no
+las tienen porque no hay herramientas: "generó el link de pago" y "tomó los
+datos" son cosas que hoy el agente no puede hacer, así que esas hojas cierran
+por válvula, y con un plan que dura la venta un cierre falso dura la venta. Van
+en la semilla igual: la forma de la venta tiene que estar desde el principio.
+
+`exige` es la función de plan a semilla: con `plaga` activa el turno no exige
+nada y el modelo puede preguntar; con `producto` activa exige buscar y citar;
+cuando `producto` cierra a mitad del turno, `derivar` ve a `receta` activa y
+agrega `dosis` a la checklist en ese mismo turno. Los ids no se repiten entre
+esta semilla y `SEMILLA` (`receta` y no `dosis`) porque `mark` y `skip` se
+enrutan por id, y un id en los dos planes iría al equivocado.
+"""
+
+INSTRUCCIONES_VENTA = f"""Llevás dos planes, y los dos se mueven desde el mismo bloque de código con el que
+consultas, sin cerca aparte:
+
+{VERBOS}
+
+`{VENTA}` es el plan de la venta y dura toda la conversación. Sus pasos con
+compuerta los cierro yo cuando el hecho pasa, aunque pasen turnos; lo que ahí
+sigue abierto es lo que le tenés que preguntar al cliente, de a una cosa por
+turno, y lo que todavía no toca queda abierto hasta que llegue: sobre la venta no
+hay `skip`. Podés agregarle una parte a una etapa con `add_step("id", "qué",
+padre="diagnostico")`, o una etapa nueva con `en="venta"`.
+
+`[plan] estado:` es la checklist de ESTE turno, y sale de la parte de la venta que
+está activa. Esa sí termina con el turno: no escribas la respuesta final hasta
+que no quede ningún paso abierto ahí, y cerrá o descartá lo que falte EN EL
+ÚLTIMO BLOQUE de código. Si no aparece, este turno no exige nada.
+
+Lo que le decís al cliente, incluida una pregunta, va en prosa sin bloque de
+código, y eso termina el turno. Un bloque de código es para consultar el catálogo
+y mover los planes; un `print` no le llega al cliente."""
 
 
 def corpus() -> str:
@@ -544,6 +661,65 @@ def nota(regs: list[dict[str, Any]]) -> str:
     return ""
 
 
+def cliente(log: Log) -> str:
+    """Las palabras del cliente en esta sesión, sacadas del pedido.
+
+    `pedido` mete la historia y la pregunta de ahora en `said[0]`, el único
+    mensaje que `window` no recorta, y el CONTRATO detrás. Esto lo desarma: las
+    líneas `P:` del bloque hablado y lo que sigue a `AHORA`, hasta `CORTE`. Las
+    compuertas de la venta miran esto y no `said` entero, porque un modelo que
+    pregunta "¿mosca blanca, gusano, ácaros?" no puede cerrar `plaga` él solo.
+
+    La fuga que tiene, dicha: una respuesta del modelo con una línea que empiece
+    en `P: ` contaría como del cliente. Es un piso, como todas las compuertas.
+    """
+    if not log.said:
+        return ""
+    cabeza = log.said[0].text.split(CORTE, 1)[0]
+    if not cabeza.startswith(HABLADO):
+        return cabeza
+    hablado, _, ahora = cabeza.partition(f"\n{AHORA}\n")
+    previas = [linea[3:] for linea in hablado.splitlines() if linea.startswith("P: ")]
+    return "\n".join([*previas, ahora])
+
+
+def dijo_plaga(objs: list[dict[str, Any]]) -> Callable[[Log], bool]:
+    """La compuerta: el cliente nombró una plaga del vocabulario.
+
+    Un regex con todos los términos de `claves(objs)`, de más largo a más corto,
+    sobre las palabras del cliente plegadas como `grep` las pliega. Con
+    lookarounds y no `\\b`, porque hay alias que terminan en punto (`spp.`); y
+    con bordes, porque `broca` no tiene que casar en `brocado`. Un vocabulario
+    vacío no cierra nunca: la compuerta no puede cumplirse sola.
+    """
+    terminos = sorted(claves(objs), key=len, reverse=True)
+    patron = re.compile("(?<!\\w)(?:" + "|".join(re.escape(t) for t in terminos) + ")(?!\\w)")
+    return lambda log: bool(terminos) and patron.search(sin_acento(cliente(log)).lower()) is not None
+
+
+AREA = re.compile(
+    r"(?<![\w.,])(?:\d+(?:[.,]\d+)?|media|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)"
+    r"\s*(?:mz|manzanas?|ha|hectareas?)(?!\w)"
+)
+
+
+def dijo_area(log: Log) -> bool:
+    """La compuerta: el cliente dijo cuánta área trata.
+
+    Un número, en cifras o del uno al diez en palabras, seguido de manzanas o
+    hectáreas, sobre las palabras del cliente plegadas. Lo que no atrapa, dicho:
+    "veinticinco manzanas", "manzana y media", "2 y media", metros cuadrados y
+    las unidades regionales (cuerda, tarea, vara). Es un piso: dice que apareció
+    un área, no que sea la correcta.
+    """
+    return AREA.search(sin_acento(cliente(log)).lower()) is not None
+
+
+def registro_sesion(objs: list[dict[str, Any]]) -> Registro:
+    """Las compuertas de la venta: las del turno más las dos sobre el cliente."""
+    return {**REGISTRO, "dijo_plaga": dijo_plaga(objs), "dijo_area": dijo_area}
+
+
 def traza() -> Cell:
     """Imprime lo que pasó en este paso. Mira y no manda.
 
@@ -598,6 +774,7 @@ def armar(
     *,
     ver: bool,
     plan: bool = False,
+    sesion: bool = False,
     citas: bool = True,
     ontologia: bool = True,
     contenedor: bool = False,
@@ -621,6 +798,16 @@ def armar(
     célula que los juzga va después de `grounded`. La bandera existe porque esto
     cambia la terminación del agente, que es lo más delicado que tiene, y hay que
     poder medir las dos ramas en la misma tarde.
+
+    Con `sesion=True` entran los mismos verbos y el paso de la venta: un `then`
+    de cuatro células sobre dos canales. `avanzar` sobre `course` cierra las
+    hojas de la venta por hechos, sin `skip` para el modelo (`flex="firme"`) y
+    sin dibujar, así que el modelo ve la venta una vez por turno, en el pedido;
+    `derivar` siembra en `steps` lo que exige la hoja activa; `avanzar` sobre
+    `steps` admite y cierra la checklist del turno; `exigir` la veta. El canal `course` no lo siembra esta función sino el host,
+    en cada turno, con lo que salió del anterior (ver `responder`). Los dos arms
+    juntos se rechazan: comparten `steps` y el colector, y con `plan` la
+    checklist fija taparía a la derivada sin que nadie lo note.
 
     `citada` va por default y `citas=False` la saca. Compara las `FUENTE:` de la
     respuesta contra las rutas del corpus y avisa cuando una no existe. Se midió
@@ -660,12 +847,15 @@ def armar(
     es lo que el que atiende necesita aunque `acierta()` no lo mida.
     `dos_pasos=False` (`--un-paso`) restaura el arm anterior.
     """
+    if plan and sesion:
+        raise ValueError("`plan` y `sesion` no van juntos: comparten `steps` y el colector")
     regs = indice()
     verbos = Verbos()
+    objs = objetivos(regs) if ontologia or sesion else []
     extra: dict[str, Any] = {"productos": regs, "notas": []}
     if ontologia:
-        extra["objetivos"] = objetivos(regs)
-    if plan:
+        extra["objetivos"] = objs
+    if plan or sesion:
         extra.update(verbos.builtins)
     ws = recurse(
         texto,
@@ -689,6 +879,18 @@ def armar(
         extras.append(citada(rutas(texto), var=ws.var))
     if plan:
         extras.append(planner(verbos, REGISTRO, semilla=SEMILLA))
+    if sesion:
+        venta = avanzar(
+            verbos,
+            registro_sesion(objs),
+            canal="course",
+            flex="firme",
+            semilla=SESION,
+            etiqueta="venta",
+            titulo=VENTA,
+            dibuja=False,
+        )
+        extras.append(then(venta, derivar(PASOS), avanzar(verbos, REGISTRO), exigir()))
     if not ver:
         extras.append(traza())
     return drive(modelo, h, ws, keep_recent=6, max_steps=12, budget=150_000, extras=extras), ws
@@ -699,6 +901,7 @@ def pedido(
     historia: tuple[tuple[str, str], ...],
     *,
     plan: bool = False,
+    venta: Plan | None = None,
     ontologia: bool = True,
     notas: bool = True,
 ) -> str:
@@ -716,23 +919,37 @@ def pedido(
     turno del usuario y NO en el preámbulo, y eso no es gusto: `nota` tiene la
     medición de lo que pasa cuando algo así se nombra en el preámbulo, que es 0 de
     12 corridas vivas contra 6 de 12.
+
+    Con `venta`, el plan de la venta tal como va: el turno 2 abre con `[x] plaga`
+    ya dibujado. La checklist del turno no se dibuja acá porque todavía no
+    existe: la siembra `derivar` en el primer paso, según la hoja activa. Y
+    cuando la hoja activa no exige nada, una línea que lo diga: en dos corridas
+    de tres el modelo pasó los doce pasos del turno 1 preguntando la plaga con
+    `print` adentro de bloques de código, porque "respuesta final" en el
+    preámbulo no le sonaba a "pregunta", y una checklist ausente no le decía
+    nada.
     """
     texto = contrato(ontologia=ontologia, notas=notas)
     if plan:
         texto += f"\n{INSTRUCCIONES}\n\n{render_plan(proyectar(SEMILLA))}\n"
+    if venta is not None:
+        texto += f"\n{INSTRUCCIONES_VENTA}\n\n{render_plan(venta, VENTA)}\n"
+        hoja = activa(venta)
+        if hoja is not None and not hoja.exige:
+            texto += (
+                f"\nLa parte activa es `{hoja.id}` y este turno no exige consultar nada: "
+                f"preguntale al cliente lo que falta para cerrarla, en prosa, sin bloque de código.\n"
+            )
     if not historia:
         return pregunta + texto
     previas = "\n\n".join(f"P: {p}\nR: {r[:500]}" for p, r in historia)
-    return (
-        f"[lo que ya hablamos en esta sesión]\n{previas}\n\n"
-        f"[la pregunta de ahora]\n{pregunta}{texto}"
-    )
+    return f"{HABLADO}\n{previas}\n\n{AHORA}\n{pregunta}{texto}"
 
 
 SIN_CONSULTAR = "No pude revisar el catálogo, así que no tengo qué recomendarte. Volvé a preguntar."
 
 
-def final(out: Log) -> str:
+def final(out: Log, *, fundar: bool = True) -> str:
     """El último dicho que no es código, salvo que no se haya consultado nada.
 
     La terminación de este agente es sintáctica: prosa quiere decir terminé. El
@@ -754,7 +971,9 @@ def final(out: Log) -> str:
     una línea gris y no llega a nadie detrás de una API. Así que acá se corta. Una
     respuesta que no consultó el catálogo no es una respuesta con una advertencia,
     es un no sé, y en un catálogo agronómico la diferencia se aplica en una
-    hectárea.
+    hectárea. Salvo el turno que no tenía nada que consultar: con `fundar=False`
+    la prosa sale igual, y `responder` lo pasa cuando la venta no le exigió nada
+    al turno, que es el turno en que se pregunta la plaga.
 
     El dicho crudo sigue en el `Log` para auditar. Lo que cambia es lo que se
     sirve.
@@ -771,7 +990,7 @@ def final(out: Log) -> str:
     no reemplaza nada, porque ahí el texto crudo es el dato. Tres lectores, tres
     políticas, un solo hecho abajo: `Fail("grounding", ...)`.
     """
-    if any(f.who == "grounding" for f in out.fails):
+    if fundar and any(f.who == "grounding" for f in out.fails):
         return SIN_CONSULTAR
     for m in reversed(out.said):
         if m.role is Role.ASSISTANT and "```" not in m.text:
@@ -794,35 +1013,55 @@ async def responder(
     *,
     ver: bool,
     plan: bool = False,
+    course: tuple[PlanOp, ...] | None = None,
     ontologia: bool = True,
     notas: bool = True,
-) -> str:
-    """Una pregunta, contestada. El Log arranca limpio cada vez.
+) -> tuple[str, tuple[PlanOp, ...]]:
+    """Una pregunta, contestada. El Log arranca limpio cada vez, salvo `course`.
 
     Solo viaja la prosa de las respuestas anteriores. Si arrastrara el Log entero,
     `reads` vendría en más de cero desde el primer paso y `grounded` no volvería a
     disparar en toda la sesión: la pregunta cinco podría contestarse de memoria
-    amparada en el grep de la pregunta uno. El plan de `--plan` va en el mismo
-    Log, así que es un plan del turno y no de la conversación: cada pregunta
-    arranca con la semilla entera en `[ ]` (ver `celulas/planner.py`).
+    amparada en el grep de la pregunta uno. El plan de `--plan` va en `steps`,
+    así que es un plan del turno y no de la conversación: cada pregunta arranca
+    con la semilla entera en `[ ]` (ver `celulas/planner.py`).
+
+    `course` es la excepción escrita. Con `--sesion` el host lo siembra con las
+    movidas de la venta hasta acá y se lleva las de este turno, que es lo único
+    que devuelve el loop (arranca en ZERO). Por la ley del fold, guardarlas al
+    final de las anteriores da el mismo plan que si todo hubiera pasado en un
+    solo turno. `None` es sin venta; la tupla vacía es el primer turno, donde
+    `avanzar` emite la semilla.
 
     `notas` arranca vacía por la misma razón: el workspace vive toda la sesión y
     una nota de la pregunta anterior al pie de las salidas de esta sería un dato
     falso. Se rebindea en vez de `.clear()` por si el modelo la pisó con otra cosa.
     """
     await ws.run("notas = []")
-    dicho = pedido(pregunta, historia, plan=plan, ontologia=ontologia, notas=notas)
-    out = await agente(Log(said=(Message(Role.USER, dicho),)))
+    venta = proyectar(course or SESION) if course is not None else None
+    dicho = pedido(pregunta, historia, plan=plan, venta=venta, ontologia=ontologia, notas=notas)
+    out = await agente(Log(said=(Message(Role.USER, dicho),), course=course or ()))
     if ver:
         for m in out.said:
             quien = {Role.USER: "repl", Role.ASSISTANT: "modelo"}.get(m.role, m.role.value)
             print(f"\n\033[1m[{quien}]\033[0m {m.text.strip()[:2000]}")
-    respuesta = final(out)
+    respuesta = final(out, fundar=course is None or bool(out.steps))
     print(f"\n{respuesta}\n")
     print(f"\033[2m[{cuenta(out, ws)}]\033[0m")
     if out.vote is Status.HALT:
         print("\033[2m[el agente frenó por su cuenta]\033[0m")
-    return respuesta
+    if course is not None:
+        print(f"\033[2m[{estado_venta(proyectar((*course, *out.course)))}]\033[0m")
+    return respuesta, out.course
+
+
+def estado_venta(plan: Plan) -> str:
+    """Una línea: cuántas hojas cerró la venta y cuál sigue."""
+    hojas = [s for s in plan if not hijos(plan, s.id)]
+    hechas = sum(cerrado(plan, s) for s in hojas)
+    hoja = activa(plan)
+    sigue = f"sigue `{hoja.id}`" if hoja else "cerró"
+    return f"venta {hechas}/{len(hojas)}: {sigue}"
 
 
 def proveedor(argv: list[str]) -> Provider:
@@ -847,6 +1086,7 @@ def proveedor(argv: list[str]) -> Provider:
 async def main(argv: list[str]) -> None:
     ver = "--ver" in argv
     plan = "--plan" in argv
+    sesion = "--sesion" in argv
     citas = "--sin-citas" not in argv
     ontologia = "--sin-ontologia" not in argv
     notas = "--sin-notas" not in argv
@@ -862,17 +1102,20 @@ async def main(argv: list[str]) -> None:
         modelo,
         ver=ver,
         plan=plan,
+        sesion=sesion,
         citas=citas,
         ontologia=ontologia,
         contenedor=contenedor,
         dos_pasos=dos_pasos,
     )
     historia: tuple[tuple[str, str], ...] = ()
+    course: tuple[PlanOp, ...] | None = () if sesion else None
 
     print(
         f"\033[1magro\033[0m · {fichas} fichas, {len(texto) // 1000} KB "
         f"(~{len(texto) // 4000}k tokens) que el modelo consulta con código "
-        f"· {modelo.model}{' · con plan' if plan else ''}{' · sin citas' if not citas else ''}"
+        f"· {modelo.model}{' · con plan' if plan else ''}{' · con plan de venta' if sesion else ''}"
+        f"{' · sin citas' if not citas else ''}"
         f"{' · sin ontología' if not ontologia else ''}{' · sin notas' if not notas else ''}"
         f"{' · en un proceso hijo' if contenedor else ''}"
         f"{' · en un paso' if not dos_pasos else ''}"
@@ -881,7 +1124,15 @@ async def main(argv: list[str]) -> None:
     try:
         if pregunta:
             await responder(
-                agente, ws, pregunta, (), ver=ver, plan=plan, ontologia=ontologia, notas=notas
+                agente,
+                ws,
+                pregunta,
+                (),
+                ver=ver,
+                plan=plan,
+                course=course,
+                ontologia=ontologia,
+                notas=notas,
             )
             return
         print("\033[2mpreguntá, o Ctrl-D para salir\033[0m")
@@ -894,17 +1145,20 @@ async def main(argv: list[str]) -> None:
                 return
             if not pregunta:
                 continue
-            respuesta = await responder(
+            respuesta, nuevos = await responder(
                 agente,
                 ws,
                 pregunta,
                 historia,
                 ver=ver,
                 plan=plan,
+                course=course,
                 ontologia=ontologia,
                 notas=notas,
             )
             historia = (*historia, (pregunta, respuesta))[-3:]
+            if course is not None:
+                course = (*course, *nuevos)
     finally:
         ws.cerrar()
         await modelo.aclose()

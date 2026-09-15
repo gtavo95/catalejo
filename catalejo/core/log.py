@@ -60,7 +60,8 @@ class Log:
     """Todo lo dicho, en canales. Cada canal trae su propia álgebra.
 
     said   una lista. El orden es el significado, así que solo concatena.
-    steps  una lista. Los ops que movieron el plan, en el orden en que se movió.
+    steps  una lista. Los ops que movieron el plan del turno, en orden.
+    course una lista. Los ops que movieron el plan de la conversación, en orden.
     fails  un conjunto. El mismo error reportado dos veces es un error.
     vote   el máximo del orden de Status.
     spent  una suma. Los tokens que costó todo esto.
@@ -68,9 +69,18 @@ class Log:
 
     `steps` no es el plan, son las MOVIDAS del plan. El plan se calcula
     plegándolas con `proyectar`, así que no hay una copia que pueda quedar
-    desincronizada y cada célula ve el plan tal como estaba cuando corrió. Es el
-    único canal que trae un tipo propio, y trae uno por la misma razón que `said`
-    trae `Message`: el álgebra ya declara la forma de lo que viaja.
+    desincronizada y cada célula ve el plan tal como estaba cuando corrió. Trae
+    un tipo propio por la misma razón que `said` trae `Message`: el álgebra ya
+    declara la forma de lo que viaja.
+
+    `course` es el mismo tipo con otro alcance: las movidas del plan que dura la
+    conversación entera, la venta con sus etapas. Dos canales del mismo tipo que
+    se distinguen solo por lo que significan, como `spent` y `reads` son dos
+    enteros que se suman. Es el único canal que el host siembra: el Log arranca
+    limpio en `reads`, `said` y `fails` en cada turno, que es lo que `grounded`
+    necesita, y `course` entra con la historia de la venta y sale con lo que este
+    turno le agregó. Por la ley del fold, guardar eso al final de lo anterior da
+    el mismo plan que si todo hubiera pasado en un solo turno.
 
     `reads` es el canal que dice si la respuesta tiene de dónde salir. En cero, el
     modelo no consultó nada y lo que conteste sale de su memoria, no del contexto.
@@ -80,6 +90,7 @@ class Log:
 
     said: Conversation = ()
     steps: tuple[PlanOp, ...] = ()
+    course: tuple[PlanOp, ...] = ()
     fails: tuple[Fail, ...] = ()
     vote: Status = Status.QUIET
     spent: int = 0
@@ -105,6 +116,7 @@ def merge(a: Log, b: Log) -> Log:
     return Log(
         said=a.said + b.said,
         steps=a.steps + b.steps,
+        course=a.course + b.course,
         fails=tuple(sorted(set(a.fails) | set(b.fails))),
         vote=max(a.vote, b.vote),
         spent=a.spent + b.spent,
@@ -124,7 +136,7 @@ def normal(log: Log) -> Log:
 
 type Rule = Callable[[Log], Log]
 
-type Channel = Literal["said", "steps", "fails", "vote", "spent", "reads"]
+type Channel = Literal["said", "steps", "course", "fails", "vote", "spent", "reads"]
 
 
 def drop(*channels: Channel) -> Rule:

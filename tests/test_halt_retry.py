@@ -56,6 +56,7 @@ def inestable(falla_hasta: int, marcas: list[int], *, spent: int = 10) -> Cell:
             spent=spent,
             reads=1,
             steps=(PlanOp("add_step", f"paso {intento}"),),
+            course=(PlanOp("add_step", f"etapa {intento}"),),
         )
 
     return cell
@@ -139,6 +140,13 @@ class TestRetry:
         out = await retry(inestable(2, []), attempts=3)(ZERO)
 
         assert out.steps == (PlanOp("add_step", "paso 3"),)
+
+    async def test_las_etapas_del_perdido_tampoco(self) -> None:
+        """El plan de la conversación se va por lo mismo: con la venta durando la
+        sesión entera, una etapa cerrada por un intento tirado duraría la venta."""
+        out = await retry(inestable(2, []), attempts=3)(ZERO)
+
+        assert out.course == (PlanOp("add_step", "etapa 3"),)
 
     async def test_el_intento_ve_las_fallas_de_los_anteriores(self) -> None:
         marcas: list[int] = []

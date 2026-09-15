@@ -23,6 +23,7 @@ logs = st.builds(
     Log,
     said=st.lists(messages, max_size=3).map(tuple),
     steps=st.lists(steps, max_size=3).map(tuple),
+    course=st.lists(steps, max_size=3).map(tuple),
     fails=st.lists(fails, max_size=3).map(tuple),
     vote=st.sampled_from(Status),
     spent=st.integers(min_value=0, max_value=1000),
@@ -83,6 +84,13 @@ class TestConmutatividad:
 
         assert merge(a, b) != merge(b, a)
 
+    def test_no_vale_en_course(self) -> None:
+        """El plan de la conversación es otro plan, con la misma álgebra."""
+        a = Log(course=(PlanOp("add_step", "a"),))
+        b = Log(course=(PlanOp("mark", "a", status="done"),))
+
+        assert merge(a, b) != merge(b, a)
+
 
 class TestIdempotencia:
     """Vale en fails y vote, y no en said, spent ni reads. Por eso reintentar una
@@ -135,6 +143,15 @@ class TestCanales:
         b = Log(steps=(PlanOp("add_step", "dos"),))
 
         assert [op.id for op in merge(a, b).steps] == ["uno", "dos"]
+
+    def test_course_concatena_en_orden_y_no_se_mezcla_con_steps(self) -> None:
+        """Dos canales del mismo tipo: lo que entra por uno no aparece en el otro."""
+        a = Log(course=(PlanOp("add_step", "uno"),))
+        b = Log(course=(PlanOp("add_step", "dos"),), steps=(PlanOp("add_step", "tres"),))
+
+        junto = merge(a, b)
+        assert [op.id for op in junto.course] == ["uno", "dos"]
+        assert [op.id for op in junto.steps] == ["tres"]
 
     def test_fails_es_un_conjunto(self) -> None:
         caido = Fail("web", "timeout")

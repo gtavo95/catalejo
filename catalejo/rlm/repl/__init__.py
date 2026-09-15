@@ -10,7 +10,7 @@ revés.
 
 from .contenedor import Contenedor
 from .environment import Environment, Output, Stub
-from .verbos import INSTRUCCIONES, Verbos
+from .verbos import INSTRUCCIONES, VERBOS, Verbos
 from .workspace import (
     CABECERA,
     HERRAMIENTAS,
@@ -34,6 +34,7 @@ __all__ = [
     "HERRAMIENTAS",
     "HERRAMIENTAS_UN_PASO",
     "INSTRUCCIONES",
+    "VERBOS",
     "Bridge",
     "Contenedor",
     "Environment",

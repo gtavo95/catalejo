@@ -32,19 +32,28 @@ que ya rige en el REPL: un snippet que revienta no es un `Fail`, es flujo normal
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from catalejo.core import PlanOp
 
-INSTRUCCIONES = """Llevás una checklist del turno. La ves en los mensajes `[plan] estado:` y
-la movés desde el mismo bloque de código con el que consultas, sin cerca aparte:
-
-- `add_step("id", "qué hay que hacer")` agrega un paso.
+VERBOS = """- `add_step("id", "qué hay que hacer")` agrega un paso.
 - `mark("id", "active")` dice en qué estás trabajando.
 - `mark("id", "done")` cierra un paso, y solo los que no tienen compuerta. Los que
   dicen `se cierra con ...` los cierro yo cuando el hecho pasa; si lo intentás, te
   lo rechazo con el motivo.
-- `skip("id")` descarta un paso que no aplica, y decir por qué en la respuesta.
+- `skip("id")` descarta un paso que no aplica, y decir por qué en la respuesta."""
+"""Las viñetas de los verbos, iguales en cualquier instrucción que los nombre.
+
+Van aparte porque hay más de una instrucción: la del turno, abajo, y la de la
+venta en `agro.py`, que describe dos planes. El vocabulario es el mismo en las
+dos, y lo que cambia es el contrato de terminación que viene después.
+"""
+
+INSTRUCCIONES = f"""Llevás una checklist del turno. La ves en los mensajes `[plan] estado:` y
+la movés desde el mismo bloque de código con el que consultas, sin cerca aparte:
+
+{VERBOS}
 
 El turno no termina hasta que no quede ningún paso abierto, así que cerrá o
 descartá lo que falte EN EL ÚLTIMO BLOQUE de código, antes de escribir la
@@ -66,6 +75,15 @@ def texto(x: object) -> str:
         return ""
 
 
+def nombres(x: object) -> tuple[str, ...]:
+    """Una lista de ids como el modelo la haya escrito: lista, tupla o un solo nombre."""
+    if isinstance(x, str):
+        return (x,) if x else ()
+    if isinstance(x, (list, tuple)):
+        return tuple(texto(i) for i in x)
+    return ()
+
+
 @dataclass
 class Verbos:
     """Junta lo que el modelo propuso sobre el plan, para que la célula lo juzgue.
@@ -83,24 +101,49 @@ class Verbos:
 
     propuestos: list[PlanOp] = field(default_factory=list)
 
-    def tomar(self) -> tuple[PlanOp, ...]:
-        """Lo propuesto desde la última vez, y deja el colector vacío.
+    def tomar(self, pertenece: Callable[[PlanOp], bool] | None = None) -> tuple[PlanOp, ...]:
+        """Lo propuesto desde la última vez, y lo saca del colector.
 
-        Drenar y no leer, porque el canal `steps` ya acumula. Si esto devolviera
-        el historial, cada paso volvería a proponer todo lo de los pasos
-        anteriores y `admitir` los rechazaría uno por uno como "no cambia nada".
+        Drenar y no leer, porque el canal ya acumula. Si esto devolviera el
+        historial, cada paso volvería a proponer todo lo de los pasos anteriores
+        y `admitir` los rechazaría uno por uno como "no cambia nada".
+
+        Con `pertenece`, toma solo los ops que pasan y deja el resto para el
+        siguiente que drene. Así se reparte un colector entre dos planes sin que
+        el colector sepa cuántos hay: la célula de la venta toma lo suyo primero,
+        y la del turno, que va última, toma lo que quedó, incluido lo que no es
+        de nadie, que ahí se rechaza con el motivo correcto. El predicado se
+        pregunta una vez por op y en orden, porque puede llevar estado: un
+        `mark` sobre el id que el `add_step` anterior del mismo bloque acaba de
+        crear pertenece al mismo plan, y eso solo se sabe plegando.
         """
-        ops = tuple(self.propuestos)
-        self.propuestos.clear()
-        return ops
+        if pertenece is None:
+            ops = tuple(self.propuestos)
+            self.propuestos.clear()
+            return ops
+        juicios = [(op, pertenece(op)) for op in self.propuestos]
+        self.propuestos = [op for op, mio in juicios if not mio]
+        return tuple(op for op, mio in juicios if mio)
 
-    def add_step(self, id: object = "", intent: object = "", *, completes_when: object = "") -> None:
+    def add_step(
+        self,
+        id: object = "",
+        intent: object = "",
+        *,
+        completes_when: object = "",
+        padre: object = "",
+        exige: object = (),
+        en: object = "",
+    ) -> None:
         self.propuestos.append(
             PlanOp(
                 "add_step",
                 texto(id),
                 intent=texto(intent),
                 completes_when=texto(completes_when),
+                padre=texto(padre),
+                exige=nombres(exige),
+                en=texto(en),
             )
         )
 

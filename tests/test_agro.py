@@ -1,21 +1,31 @@
 """Lo que el asesor sirve como respuesta, que no siempre es lo que el modelo dijo."""
 
-from catalejo.core import Conversation, Fail, Log, Message, Role
-from catalejo.llm import Reply
+import pytest
 
+from catalejo.core import Conversation, Fail, Log, Message, PlanOp, Role, activa, cerrado, proyectar
+from catalejo.llm import Reply, Stub
 from agro import (
     BUNDLE,
     BUSCAR,
     BUSCAR_EN_OBJETIVOS,
     NOTAS,
+    PASOS,
+    SEMILLA,
+    SESION,
     SIN_CONSULTAR,
+    VENTA,
     armar,
     claves,
+    cliente,
     contrato,
+    corpus,
+    dijo_area,
+    dijo_plaga,
     final,
     indice,
     objetivos,
     pedido,
+    registro_sesion,
     resolver,
     responder,
     vocabulario,
@@ -40,6 +50,12 @@ class TestFinal:
         out = Log(said=(dicho("ya veo"), dicho("```python\nprint(1)\n```")))
 
         assert final(out) == "ya veo"
+
+    def test_sin_consultar_pero_sin_nada_que_consultar_se_sirve(self) -> None:
+        """El turno en que se pregunta la plaga no tenía nada que fundar."""
+        out = Log(said=(dicho("¿Qué plaga ves?"),), fails=(SIN_FUNDAMENTO,))
+
+        assert final(out, fundar=False) == "¿Qué plaga ves?"
 
     def test_sin_consultar_no_se_sirve_lo_que_dijo(self) -> None:
         """El turno que destapó esto fue el modelo deliberando en voz alta.
@@ -256,6 +272,15 @@ class TestContrato:
         assert "notas" not in pedido("¿zompopo?", (), notas=False)
 
 
+class Guion(Stub):
+    """Un `Stub` que además es un `Provider`: tiene nombre y se puede cerrar."""
+
+    model = "guion"
+
+    async def aclose(self) -> None:
+        pass
+
+
 class Mudo:
     """Un `Provider` que nunca se llama: armar el agente no habla con nadie."""
 
@@ -289,3 +314,176 @@ class TestNotasEnElWorkspace:
         await responder(agente, ws, "¿y ahora?", (), ver=False)
 
         assert (await ws.run("pass")).notas == ()
+
+
+def pedido_del(pregunta: str, historia: tuple[tuple[str, str], ...] = ()) -> Log:
+    return Log(said=(Message(Role.USER, pedido(pregunta, historia, venta=proyectar(SESION))),))
+
+
+def hoja(ops: tuple[PlanOp, ...]) -> str:
+    h = activa(proyectar(ops))
+    assert h is not None
+    return h.id
+
+
+class TestCliente:
+    def test_sin_historia_es_la_pregunta(self) -> None:
+        assert cliente(pedido_del("mosca blanca")) == "mosca blanca"
+
+    def test_con_historia_trae_las_preguntas_y_no_las_respuestas(self) -> None:
+        log = pedido_del("dos", (("tengo una plaga", "¿mosca blanca, gusano?"),))
+
+        assert cliente(log) == "tengo una plaga\ndos"
+
+    def test_no_lee_el_contrato_ni_el_plan(self) -> None:
+        texto = cliente(pedido_del("mosca blanca"))
+
+        assert "Para contestar" not in texto and VENTA not in texto
+
+
+OBJS = [
+    {"id": "mosca-blanca", "etiqueta": "Mosca blanca", "alias": ["bemisia"]},
+    {"id": "arana-roja", "etiqueta": "Araña roja", "alias": []},
+    {"id": "broca", "etiqueta": "Broca del café", "alias": ["broca"]},
+]
+
+
+class TestCompuertasDeLaVenta:
+    """Miran las palabras del cliente y nada más. Pisos, como todas."""
+
+    def test_dijo_plaga_cierra_con_la_palabra_del_cliente(self) -> None:
+        assert dijo_plaga(OBJS)(pedido_del("tengo mosca blanca en el tomate"))
+
+    def test_no_cierra_con_tengo_una_plaga(self) -> None:
+        assert not dijo_plaga(OBJS)(pedido_del("tengo una plaga en el tomate"))
+
+    def test_no_cierra_con_lo_que_dijo_el_modelo(self) -> None:
+        log = pedido_del("dos", (("tengo una plaga", "¿Es mosca blanca o araña roja?"),))
+
+        assert not dijo_plaga(OBJS)(log)
+
+    def test_pliega_caso_y_acentos(self) -> None:
+        assert dijo_plaga(OBJS)(pedido_del("ARAÑA roja"))
+        assert dijo_plaga(OBJS)(pedido_del("arana roja"))
+
+    def test_no_casa_adentro_de_otra_palabra(self) -> None:
+        assert not dijo_plaga(OBJS)(pedido_del("un brocado de tela"))
+
+    def test_sin_vocabulario_no_cierra_nunca(self) -> None:
+        assert not dijo_plaga([])(pedido_del("mosca blanca"))
+
+    def test_sobre_el_bundle_de_verdad(self) -> None:
+        gate = registro_sesion(objetivos(indice()))["dijo_plaga"]
+
+        assert gate(pedido_del("mosca blanca"))
+        assert not gate(pedido_del("tengo una plaga en el tomate"))
+
+    def test_dijo_area_con_cifras_y_con_palabras(self) -> None:
+        for dicho in ("2 manzanas", "dos manzanas", "1.5 ha", "3 hectáreas", "tengo 10mz"):
+            assert dijo_area(pedido_del(dicho)), dicho
+
+    def test_dijo_area_lo_que_no_atrapa(self) -> None:
+        """Documentado, no perseguido: es un piso. "una manzana podrida" sí cuenta."""
+        for dicho in ("manzana", "tengo tomate", "veinticinco manzanas", "manzana y media"):
+            assert not dijo_area(pedido_del(dicho)), dicho
+
+
+class TestLaSemillaDeLaVenta:
+    def test_los_ids_no_se_repiten_entre_los_dos_planes(self) -> None:
+        """`mark` y `skip` se enrutan por id: un id en los dos iría al equivocado."""
+        assert {op.id for op in SESION}.isdisjoint(op.id for op in SEMILLA)
+
+    def test_todo_lo_que_exige_esta_en_el_catalogo(self) -> None:
+        assert all(i in PASOS for op in SESION for i in op.exige)
+
+    def test_toda_compuerta_esta_en_el_registro(self) -> None:
+        registro = registro_sesion(OBJS)
+
+        assert all(op.completes_when in registro for op in SESION if op.completes_when)
+
+    def test_arranca_con_plaga_activa_y_sin_exigir_nada(self) -> None:
+        h = activa(proyectar(SESION))
+
+        assert h is not None and h.id == "plaga" and h.exige == ()
+
+
+class TestArmar:
+    def test_plan_y_sesion_juntos_no_se_cablean(self) -> None:
+        with pytest.raises(ValueError):
+            armar("=== productos/x.md ===\nhola", Mudo(), ver=False, plan=True, sesion=True)
+
+
+class TestPedidoConVenta:
+    def test_lleva_la_venta_dibujada_y_sus_instrucciones(self) -> None:
+        texto = pedido("mosca blanca", (), venta=proyectar(SESION))
+
+        assert VENTA in texto and "[ ] diagnostico" in texto and "    [ ] plaga" in texto
+        assert "dura toda la conversación" in texto
+        assert "El turno no termina" not in texto and "[ ] buscar" not in texto
+
+    def test_con_la_hoja_activa_sin_exigencia_lo_dice(self) -> None:
+        con = pedido("tengo una plaga", (), venta=proyectar(SESION))
+        sin = pedido("dos", (), venta=proyectar((*SESION, PlanOp("mark", "plaga", status="done"))))
+
+        assert "no exige consultar nada" in con and "`plaga`" in con
+        assert "no exige consultar nada" not in sin
+
+    def test_dibuja_el_estado_que_trae(self) -> None:
+        texto = pedido("dos", (), venta=proyectar((*SESION, PlanOp("mark", "plaga", status="done"))))
+
+        assert "    [x] plaga" in texto
+
+
+class TestLaVentaDePuntaAPunta:
+    """Tres turnos con un modelo de guion sobre el corpus real, sin exigir a nadie de más."""
+
+    async def test_tres_turnos(self) -> None:
+        modelo = Guion(
+            "```python\nprint(len(productos))\n```",
+            "¿Qué plaga ves en el tomate?",
+            "```python\nprint(read(catalogo, 'productos/metaveria-40-ew.md'))\n```",
+            "Metaveria 40 EW, certificado en tomate. ¿Cuántas manzanas tenés?\nFUENTE: productos/metaveria-40-ew.md",
+            "Para 2 manzanas van 1.4 a 3 L. ¿Alguna duda del producto?\nFUENTE: productos/metaveria-40-ew.md",
+        )
+        agente, ws = armar(corpus(), modelo, ver=False, sesion=True)
+        try:
+            r1, c1 = await responder(agente, ws, "tengo una plaga en el tomate", (), ver=False, course=())
+            p1 = proyectar(c1)
+            assert r1.startswith("¿Qué plaga")
+            assert hoja(c1) == "plaga"
+            assert cerrado(p1, p1[2]), "producto cierra con cualquier consulta: es el piso de REGISTRO"
+
+            historia: tuple[tuple[str, str], ...] = (("tengo una plaga en el tomate", r1),)
+            r2, c2 = await responder(agente, ws, "mosca blanca", historia, ver=False, course=c1)
+            assert [op.id for op in c2] == ["plaga", "receta"]
+            assert hoja((*c1, *c2)) == "cantidad"
+            assert "FUENTE" in r2
+
+            historia = (*historia, ("mosca blanca", r2))
+            r3, c3 = await responder(agente, ws, "dos manzanas", historia, ver=False, course=(*c1, *c2))
+            p3 = proyectar((*c1, *c2, *c3))
+            assert [op.id for op in c3] == ["cantidad"]
+            assert hoja((*c1, *c2, *c3)) == "dudas"
+            assert not cerrado(p3, p3[0])
+        finally:
+            ws.cerrar()
+
+    async def test_la_checklist_del_turno_se_siembra_y_se_exige(self) -> None:
+        """Turno 2 con `producto` ya cerrado: la hoja activa es `receta`, el turno
+        exige `dosis` y `fuente`, y contestar sin la ficha se veta una vez."""
+        modelo = Guion(
+            "Metaveria sirve. ¿Cuántas manzanas?",
+            "```python\nprint(read(catalogo, 'productos/metaveria-40-ew.md'))\n```",
+            "Metaveria 40 EW, 1 a 2.14 L/ha. ¿Cuántas manzanas?\nFUENTE: productos/metaveria-40-ew.md",
+        )
+        agente, ws = armar(corpus(), modelo, ver=False, sesion=True)
+        previos = (*SESION, PlanOp("mark", "producto", status="done"))
+        try:
+            r, c = await responder(agente, ws, "mosca blanca", (), ver=False, course=previos)
+        finally:
+            ws.cerrar()
+
+        vistos = "\n".join(m.text for m in modelo.visto[1])
+        assert "[plan] faltan pasos:" in vistos and "`dosis`" in vistos
+        assert [op.id for op in c] == ["plaga", "receta"]
+        assert "FUENTE" in r

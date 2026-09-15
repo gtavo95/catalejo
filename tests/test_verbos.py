@@ -44,6 +44,41 @@ class TestColector:
         assert v.tomar() == (PlanOp("add_step", ""),)
 
 
+class TestReparto:
+    """Un colector, dos planes: cada célula toma lo suyo y la última se lleva el resto."""
+
+    def test_add_step_lleva_padre_exige_y_destino(self) -> None:
+        v = Verbos()
+
+        v.add_step("dudas", "lo que pregunte", padre="diagnostico", exige=["fuente"], en="venta")
+
+        assert v.tomar() == (
+            PlanOp("add_step", "dudas", "lo que pregunte", padre="diagnostico", exige=("fuente",), en="venta"),
+        )
+
+    def test_exige_acepta_un_solo_nombre_o_basura(self) -> None:
+        v = Verbos()
+
+        v.add_step("a", exige="fuente")
+        v.add_step("b", exige=3)
+
+        a, b = v.tomar()
+        assert a.exige == ("fuente",) and b.exige == ()
+
+    def test_tomar_con_filtro_deja_el_resto_para_el_siguiente(self) -> None:
+        v = Verbos()
+        v.mark("plaga", "active")
+        v.mark("buscar", "active")
+        v.add_step("garantia", "preguntar", en="venta")
+
+        de_la_venta = v.tomar(lambda op: op.en == "venta" or op.id == "plaga")
+        del_turno = v.tomar()
+
+        assert [op.id for op in de_la_venta] == ["plaga", "garantia"]
+        assert [op.id for op in del_turno] == ["buscar"]
+        assert v.tomar() == ()
+
+
 class TestEnElRepl:
     async def test_el_snippet_sigue_despues_de_llamar_un_verbo(self) -> None:
         v = Verbos()

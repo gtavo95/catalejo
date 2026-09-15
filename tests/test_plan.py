@@ -13,12 +13,15 @@ from catalejo.core import (
     Plan,
     PlanOp,
     Step,
+    activa,
     admitidos,
     admitir,
     aplicar,
+    cerrado,
     cerrar,
     completo,
     deja,
+    hijos,
     pendientes,
     proyectar,
 )
@@ -176,6 +179,9 @@ class TestAdmitir:
 
 
 class TestDeja:
+    def test_firme_agrega_y_marca_pero_no_salta(self) -> None:
+        assert deja("firme") == {"add_step", "mark"}
+
     def test_acotado_deja_agregar(self) -> None:
         assert deja("acotado") == {"add_step", "mark", "skip"}
 
@@ -207,3 +213,76 @@ class TestCerrar:
         )
 
         assert cerrar(p, frozenset({"leyo"})) == ()
+
+
+VENTA = (
+    PlanOp("add_step", "diagnostico", "armar el carrito"),
+    PlanOp("add_step", "plaga", padre="diagnostico", completes_when="dijo_plaga"),
+    PlanOp("add_step", "producto", padre="diagnostico", exige=("buscar", "fuente")),
+    PlanOp("add_step", "pago", "cobrar"),
+    PlanOp("add_step", "medio", padre="pago"),
+)
+
+
+def hoja(p: Plan) -> str:
+    h = activa(p)
+    assert h is not None
+    return h.id
+
+
+class TestEtapas:
+    """Dos niveles con un campo, y todo lo demás calculado."""
+
+    def test_add_step_lleva_padre_y_exige_al_paso(self) -> None:
+        p = proyectar(VENTA)
+
+        assert p[2] == Step("producto", "", "todo", "", "diagnostico", ("buscar", "fuente"))
+        assert [h.id for h in hijos(p, "diagnostico")] == ["plaga", "producto"]
+
+    def test_una_etapa_se_cierra_cuando_sus_hijos_se_cierran(self) -> None:
+        p = proyectar((*VENTA, PlanOp("mark", "plaga", status="done"), PlanOp("skip", "producto")))
+
+        assert cerrado(p, p[0])
+        assert not cerrado(p, p[3])
+
+    def test_una_etapa_saltada_esta_cerrada_aunque_tenga_hijos_abiertos(self) -> None:
+        """Saltar la facturación es saltar sus datos."""
+        p = proyectar((*VENTA, PlanOp("skip", "pago")))
+
+        assert cerrado(p, p[3])
+        assert pendientes(p) == (p[0], p[1], p[2])
+
+    def test_la_hoja_activa_es_el_primer_hijo_abierto_de_la_primera_etapa_abierta(self) -> None:
+        p = proyectar(VENTA)
+        assert hoja(p) == "plaga"
+
+        p = proyectar((*VENTA, PlanOp("mark", "plaga", status="done")))
+        assert hoja(p) == "producto"
+
+        p = proyectar((*VENTA, PlanOp("skip", "diagnostico")))
+        assert hoja(p) == "medio"
+
+    def test_una_hoja_agregada_despues_cuenta_en_su_etapa_y_no_al_final(self) -> None:
+        """En orden plano quedaría después de `medio`; por `padre` sigue en diagnóstico."""
+        tarde = PlanOp("add_step", "dudas", padre="diagnostico")
+        p = proyectar((*VENTA, PlanOp("mark", "plaga", status="done"), PlanOp("skip", "producto"), tarde))
+
+        assert hoja(p) == "dudas"
+        assert not cerrado(p, p[0])
+
+    def test_un_paso_sin_padre_y_sin_hijos_es_una_hoja_raiz(self) -> None:
+        p = proyectar((PlanOp("add_step", "a"), PlanOp("add_step", "b")))
+
+        assert hoja(p) == "a"
+
+    def test_todo_cerrado_es_completo_y_sin_hoja_activa(self) -> None:
+        p = proyectar((*VENTA, PlanOp("skip", "diagnostico"), PlanOp("skip", "pago")))
+
+        assert completo(p)
+        assert activa(p) is None
+
+    def test_el_plan_plano_no_cambia(self) -> None:
+        """Sin `padre` todo esto es lo de siempre: cerrado es el estado, y nada más."""
+        p = proyectar((PlanOp("add_step", "a"), PlanOp("mark", "a", status="done")))
+
+        assert completo(p) and pendientes(p) == () and activa(p) is None

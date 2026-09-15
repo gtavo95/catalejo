@@ -166,11 +166,12 @@ def retry(cell: Cell, *, attempts: int) -> Cell:
 
     Del intento perdido sobreviven `spent` y `fails`. El gasto porque la llamada
     caída se paga igual, y la falla porque es verdad que pasó y el que llame
-    tiene derecho a verla. Se van `said`, `vote`, `reads` y `steps`. Los dos primeros son
+    tiene derecho a verla. Se van `said`, `vote`, `reads`, `steps` y `course`. Los dos primeros son
     obvios: media respuesta no se muestra y un voto de algo que no aterrizó no
     manda. `reads` es el que importa: si quedara, un intento que leyó el contexto
     y después reventó le dejaría el piso servido a `grounded`, y el intento que
-    sí aterrizó podría contestar de memoria pareciendo fundado.
+    sí aterrizó podría contestar de memoria pareciendo fundado. Los dos planes
+    se van por lo mismo: un intento que se tiró no movió nada.
 
     Un intento que vota HALT no se reintenta. Alguien decidió que no hay otra
     vuelta, y eso vale acá igual que en `loop`.
@@ -182,7 +183,7 @@ def retry(cell: Cell, *, attempts: int) -> Cell:
     `attempts=1` es correr la célula una vez, y `attempts=0` no agrega nada,
     igual que `then()`.
     """
-    perdido = drop("said", "vote", "reads", "steps")
+    perdido = drop("said", "vote", "reads", "steps", "course")
 
     async def retried(seen: Log) -> Log:
         acc = ZERO

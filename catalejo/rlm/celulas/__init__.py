@@ -11,7 +11,7 @@ from .citas import citada, citadas, inventada
 from .executor import executor, extract_code, render
 from .grounding import grounded
 from .handle import Handle, render_handle
-from .planner import Registro, planner, render_plan
+from .planner import Registro, avanzar, cumplidos, derivar, exigir, planner, render_plan
 from .worker import window, worker
 
 __all__ = [
@@ -23,6 +23,10 @@ __all__ = [
     "extract_code",
     "grounded",
     "inventada",
+    "avanzar",
+    "cumplidos",
+    "derivar",
+    "exigir",
     "planner",
     "render",
     "render_handle",

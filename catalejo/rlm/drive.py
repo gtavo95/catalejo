@@ -63,7 +63,8 @@ def drive(
 
     `extras` van al final por lo mismo: una célula que juzgue el paso necesita ver
     el paso entero, y en `then` cada célula ve lo que llegó más lo que agregaron
-    las anteriores. Ahí entra el `planner`.
+    las anteriores. Ahí entra el `planner`, que es `then(avanzar, exigir)`, o el
+    paso de la venta, que es un `then` más largo sobre dos canales.
     """
     paso = then(
         worker(model, handle, keep_recent=keep_recent),
